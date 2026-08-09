@@ -295,6 +295,10 @@ body {
     <small>Dokun ⚡ → yenile & güncelle</small>
 </div>
 
+<!-- HER ZAMAN GÖRÜNÜR senkron uyarısı. Eskiden tüm hata/bekleme mesajları kapalı ayar
+     kartının içinde kalıyordu → kullanıcı sorunu hiç göremiyordu. Sorun yokken gizli. -->
+<div id="senkronUyari" onclick="baglantiTesti()" style="display:none;margin:0 14px 10px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;cursor:pointer;line-height:1.4"></div>
+
 <!-- ============ ÜRÜN EKLE ============ -->
 <div id="view-urun">
     <div class="fis-banner" id="fisBanner" style="display:none">
@@ -329,7 +333,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 33 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 34 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -473,23 +477,42 @@ function dbAc() {
             var db = e.target.result;
             if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
         };
-        req.onsuccess = function(e) { _db = e.target.result; resolve(_db); };
+        req.onsuccess = function(e) {
+            _db = e.target.result;
+            // Bağlantı kapanırsa SIFIRLA — yoksa arka plandan dönüşte tüm okuma/yazma kalıcı hata verir
+            try {
+                _db.onclose = function() { _db = null; };
+                _db.onversionchange = function() { try { _db.close(); } catch (er) {} _db = null; };
+            } catch (er) {}
+            resolve(_db);
+        };
         req.onerror = function() { reject(req.error); };
+        req.onblocked = function() { reject(new Error('idb engellendi')); };
+    });
+}
+// Bağlantı bozulmuşsa bir kez sıfırlayıp yeniden dene (askıda kalmasın)
+function _dbIslem(fn) {
+    return dbAc().then(fn).catch(function() {
+        _db = null;
+        return dbAc().then(fn);
     });
 }
 function dbGet(key) {
-    return dbAc().then(function(db) { return new Promise(function(resolve, reject) {
-        var r = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+    return _dbIslem(function(db) { return new Promise(function(resolve, reject) {
+        var tx = db.transaction('kv', 'readonly');
+        var r = tx.objectStore('kv').get(key);
         r.onsuccess = function() { resolve(r.result); };
         r.onerror = function() { reject(r.error); };
+        tx.onabort = function() { reject(tx.error || new Error('iptal')); };
     }); });
 }
 function dbSet(key, val) {
-    return dbAc().then(function(db) { return new Promise(function(resolve, reject) {
+    return _dbIslem(function(db) { return new Promise(function(resolve, reject) {
         var tx = db.transaction('kv', 'readwrite');
         tx.objectStore('kv').put(val, key);
         tx.oncomplete = function() { resolve(); };
         tx.onerror = function() { reject(tx.error); };
+        tx.onabort = function() { reject(tx.error || new Error('iptal')); };  // YOKSA promise hiç sonuçlanmaz → açılış askıda kalır
     }); });
 }
 function urunlerKaydet() {
@@ -502,11 +525,16 @@ function fislerKaydet() {
 // Fiş id'lerini düzelt: sayıya çevir + id'siz olana benzersiz id ata (yoksa senkronsuz kalır / karşılaştırmalar bozulur)
 function _fisIdDuzelt() {
     if (!Array.isArray(fisler)) { fisler = []; return; }
-    var t = Date.now();
+    var t = Date.now(), gorulen = {};
     for (var i = 0; i < fisler.length; i++) {
         var fs = fisler[i]; if (!fs || typeof fs !== 'object') continue;
         if (fs.id == null || fs.id === '') fs.id = t + i;
         else { var n = +fs.id; if (!isNaN(n)) fs.id = n; }
+        // AYNI id'li ikinci fiş: buluta hiç yazılmıyor ve hiç silinmiyordu → benzersizleştir
+        while (gorulen[String(fs.id)]) fs.id = (+fs.id || t) + 1;
+        gorulen[String(fs.id)] = 1;
+        // urunler dizisi eksikse Siparişler sekmesinin TAMAMI çiziminde çöküyordu → garanti et
+        if (!Array.isArray(fs.urunler)) fs.urunler = [];
     }
 }
 function verileriYukle() {
@@ -536,8 +564,17 @@ function toggleKur() {
 
 /* ---------- Yedek (dışa / içe aktar) ---------- */
 function kurlarRaw() {
-    var o = {};
-    for (var i = 0; i < _kurFields.length; i++) o[_kurFields[i]] = document.getElementById(_kurFields[i]).value;
+    var o = {}, kayitli = {};
+    try { kayitli = JSON.parse(localStorage.getItem('smh_kurlar')) || {}; } catch (e) {}
+    for (var i = 0; i < _kurFields.length; i++) {
+        var ad = _kurFields[i], el = document.getElementById(ad);
+        var v = el ? el.value : '';
+        // BOŞ/geçersiz kur buluta yazılıp TÜM cihazlarda kurları sıfırlamasın → son geçerli değeri koru
+        if (v === '' || isNaN(parseFloat(v))) {
+            v = (kayitli[ad] !== undefined && kayitli[ad] !== '' && !isNaN(parseFloat(kayitli[ad]))) ? kayitli[ad] : (el ? el.defaultValue : '');
+        }
+        o[ad] = v;
+    }
     return o;
 }
 function yedekAl() {
@@ -562,9 +599,12 @@ function yedekBirlestir(input) {
         if (!gelen.length) { alert('Bu yedekte kayıtlı sipariş (fiş) yok.'); input.value = ''; return; }
         var mevcut = {};
         fisler.forEach(function(f) { if (f && f.id != null) mevcut[f.id] = true; });
-        var eklendi = 0, atlandi = 0;
+        var eklendi = 0, atlandi = 0, _yid = Date.now();
         gelen.forEach(function(fs) {
-            if (fs && fs.id != null && !mevcut[fs.id]) { fisler.push(fs); mevcut[fs.id] = true; eklendi++; }
+            if (!fs || typeof fs !== 'object') { atlandi++; return; }
+            // id'si OLMAYAN sipariş eskiden "zaten vardı" diye atlanıyordu → yeni id verilip EKLENİR
+            if (fs.id == null || fs.id === '') { fs.id = _yid++; }
+            if (!mevcut[fs.id]) { fisler.push(fs); mevcut[fs.id] = true; eklendi++; }
             else atlandi++;
         });
         fisler.sort(function(a, b) { return (a.id || 0) - (b.id || 0); });
@@ -793,9 +833,13 @@ function siparisVer() {
 
     if (aktifFisId) {
         // Kayıtlı bir fişe ekleniyor
-        var fs = null;
-        for (var i = 0; i < fisler.length; i++) if (fisler[i].id === aktifFisId) fs = fisler[i];
-        if (fs) { fs.urunler.push(yeni); fs.toplam = fisYuan(fs.urunler); fislerKaydet(); }
+        var fs = fisBul(aktifFisId);
+        if (!fs) {
+            // Hedef sipariş yok (başka cihazda silinmiş olabilir) → ürünü SESSİZCE YOK ETME
+            alert('Eklenecek sipariş bulunamadı.\nBaşka bir cihazda silinmiş olabilir.\n\nÜrün korundu — "✓ Bitir" ile çıkıp tekrar deneyin.');
+            return;
+        }
+        fs.urunler.push(yeni); fs.toplam = fisYuan(fs.urunler); fislerKaydet();
     } else {
         // Normal sepet
         urunler.push(yeni);
@@ -1036,7 +1080,7 @@ function fisKaydirGec(yon) {
 }
 function fisAc(id) {
     var fs = null;
-    for (var i = 0; i < fisler.length; i++) if (fisler[i].id === id) fs = fisler[i];
+    for (var i = 0; i < fisler.length; i++) if (fisler[i] && String(fisler[i].id) === String(id)) fs = fisler[i];
     if (!fs) return;
     if (document.getElementById('fislerList').style.display !== 'none') _siparisScroll = window.scrollY || window.pageYOffset || 0;
     _acikFisId = id;
@@ -1076,7 +1120,7 @@ function fisGeri() {
 }
 function fisSil(id) {
     if (!confirm('Bu fiş tamamen silinsin mi?')) return;
-    for (var i = 0; i < fisler.length; i++) { if (fisler[i].id === id) { fisler.splice(i, 1); break; } }
+    for (var i = 0; i < fisler.length; i++) { if (fisler[i] && String(fisler[i].id) === String(id)) { fisler.splice(i, 1); break; } }
     fislerKaydet();
     tabRozetGuncelle();
     fisGeri();
@@ -1115,7 +1159,7 @@ function fisSureDuzenle(id) {
 function fisUrunSil(fisId, urunIdx) {
     if (!confirm('Bu ürün fişten silinsin mi?')) return;
     var fs = null;
-    for (var i = 0; i < fisler.length; i++) if (fisler[i].id === fisId) fs = fisler[i];
+    for (var i = 0; i < fisler.length; i++) if (fisler[i] && String(fisler[i].id) === String(fisId)) fs = fisler[i];
     if (!fs) return;
     fs.urunler.splice(urunIdx, 1);
     fs.toplam = fisYuan(fs.urunler);
@@ -1123,7 +1167,7 @@ function fisUrunSil(fisId, urunIdx) {
     tabRozetGuncelle();
     if (fs.urunler.length === 0) {
         // Fişte ürün kalmadı → fişi sil, listeye dön
-        for (var j = 0; j < fisler.length; j++) { if (fisler[j].id === fisId) { fisler.splice(j, 1); break; } }
+        for (var j = 0; j < fisler.length; j++) { if (fisler[j] && String(fisler[j].id) === String(fisId)) { fisler.splice(j, 1); break; } }
         fislerKaydet();
         tabRozetGuncelle();
         alert('Fişte ürün kalmadı, fiş silindi.');
@@ -1135,7 +1179,7 @@ function fisUrunSil(fisId, urunIdx) {
 // Kayıtlı bir fişe ürün ekleme modunu başlat
 function fiseUrunEkleBasla(id) {
     var fs = null;
-    for (var i = 0; i < fisler.length; i++) if (fisler[i].id === id) fs = fisler[i];
+    for (var i = 0; i < fisler.length; i++) if (fisler[i] && String(fisler[i].id) === String(id)) fs = fisler[i];
     if (!fs) return;
     aktifFisId = id;
     document.getElementById('fisBannerText').innerHTML = '🧾 <b>' + escapeHtml(fs.ad) + '</b> fişine ekliyorsun';
@@ -1325,8 +1369,16 @@ function tabRozetGuncelle() {
 // Veri IndexedDB'den (ilk açılışta localStorage'dan taşınarak) yüklenince ekranı çiz
 verileriYukle().then(function() {
     _fisIdDuzelt();
-    renderFis();
-    tabRozetGuncelle();
+    return _senkronDurumYukle();          // kalıcı ortak ata + bekleyen silme emirleri
+}).then(function() {
+    try { renderFis(); tabRozetGuncelle(); } catch (e) {}
+    _oncekiIdler = {};                     // silme tespitinin başlangıç kümesi
+    (fisler || []).forEach(function (f) { if (f && f.id != null) _oncekiIdler[String(f.id)] = 1; });
+    _localLoaded = true;
+    if (typeof _cloudBaslatBekle === 'function') _cloudBaslatBekle();
+}).catch(function() {
+    // Açılış HİÇBİR koşulda yarıda kalmasın — yarıda kalırsa bulut hiç bağlanmaz
+    // (telefonda "hiç sipariş gözükmüyor" semptomunun sebeplerinden biri buydu)
     _localLoaded = true;
     if (typeof _cloudBaslatBekle === 'function') _cloudBaslatBekle();
 });
@@ -1409,7 +1461,14 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(function(reg) { try { reg.update(); } catch(e) {} }).catch(function(){});
     var _swReloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function() {
-        if (_swReloaded) return; _swReloaded = true; location.reload();
+        if (_swReloaded) return; _swReloaded = true;
+        // Uçuşta yazma/silme varsa BİTMESİNİ bekle — yarıda kesilen silme eskiden kayboluyordu.
+        // (Kuyruk artık kalıcı olduğu için kaybolmaz ama gereksiz tekrar turunu da önleyelim.)
+        var bekle = 0;
+        (function dene() {
+            if (typeof _pendingPush !== 'undefined' && _pendingPush && bekle < 20) { bekle++; setTimeout(dene, 500); return; }
+            location.reload();
+        })();
     });
 }
 
@@ -1417,7 +1476,9 @@ if ('serviceWorker' in navigator) {
 var _sonResync = 0;
 function _yenidenSenkron() {
     if (!_user || !_fbReady) return;
-    if (_pendingPush) return;   // gönderim/tekrar-deneme sürüyorsa dokunma (yerel değişikliği düşürme); takılırsa watchdog bırakır
+    // NOT: eski sürümdeki "if (_pendingPush) return;" burada TAKILI bir push yüzünden yeniden
+    // senkronu KALICI engelliyordu. Artık gerek yok: 3 yönlü birleştirme gönderilmemiş yerel
+    // değişikliği koruyor ve kuyruk kalıcı → yeniden bağlanmak her an güvenli.
     var now = (window.performance && performance.now) ? performance.now() : 0;
     if (now && (now - _sonResync) < 3000) return;  // çok sık tetikleme
     _sonResync = now;
@@ -1439,10 +1500,46 @@ var _fbConfig = {
 };
 var _user = null, _localLoaded = false, _applyingRemote = false, _fbReady = false;
 var _pushTimer = null, _lastSyncJson = null, _fbRef = null, _pendingPush = false;
-var _cloudFis = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0, _pushWatchdog = null;
+var _cloudJson = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0, _pushWatchdog = null;
+// ---- KALICI SENKRON DURUMU (IndexedDB'de saklanır; bağlantı kopsa / uygulama kapansa da kaybolmaz) ----
+// _lastFisMap  : id -> buluttan DOĞRULANMIŞ son json — 3 yönlü birleştirmenin "ortak ata"sı
+// _silinen     : id -> 1  → yerelde silindi, buluttan kaldırılması HENÜZ onaylanmadı (mezar taşı)
+// _oncekiIdler : son kayıttaki id kümesi — hangi fişin silindiğini anlamak için
+var _silinen = {}, _oncekiIdler = null, _bekleyenMeta = null, _ilkYukleme = false, _lastMetaJson = null;
+var _gonderimAktif = false, _tekrarGerekli = false;
+function _senkronDurumKaydet() {
+    try { dbSet('sonSenkron', _lastFisMap).catch(function () {}); } catch (e) {}
+    try { dbSet('silinen', _silinen).catch(function () {}); } catch (e) {}
+}
+// Karşılaştırma için KANONİK json: anahtarlar sıralı, undefined atılır.
+// Şart: Firebase'den gelen nesnenin anahtar sırası yereldekinden farklı olabilir; düz
+// JSON.stringify ile karşılaştırınca aynı veri "değişmiş" görünüp sonsuz yeniden yükleme olur.
+function _kanonikJson(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+    if (Array.isArray(v)) return '[' + v.map(_kanonikJson).join(',') + ']';
+    var ks = Object.keys(v).filter(function (k) { return v[k] !== undefined; }).sort();
+    return '{' + ks.map(function (k) { return JSON.stringify(k) + ':' + _kanonikJson(v[k]); }).join(',') + '}';
+}
+function _senkronDurumYukle() {
+    return Promise.all([dbGet('sonSenkron'), dbGet('silinen')]).then(function (r) {
+        if (r[0] && typeof r[0] === 'object') _lastFisMap = r[0];
+        if (r[1] && typeof r[1] === 'object') _silinen = r[1];
+    }).catch(function () {});
+}
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
-function _bulutDurum(msg, renk) { var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; } }
+function _bulutDurum(msg, renk) {
+    var d = document.getElementById('bulutDurum'); if (d) { d.textContent = msg; d.style.color = renk || '#94a3b8'; }
+    // AYRICA her zaman görünür şeride yaz — ayar kartı kapalıyken de sorunu GÖR
+    var u = document.getElementById('senkronUyari'); if (!u) return;
+    var sorun = (renk === '#f87171' || renk === '#fbbf24');
+    if (sorun) {
+        u.textContent = msg + '  › dokun';
+        u.style.background = (renk === '#f87171') ? 'rgba(248,113,113,0.15)' : 'rgba(251,191,36,0.15)';
+        u.style.color = renk; u.style.border = '1px solid ' + renk;
+        u.style.display = 'block';
+    } else u.style.display = 'none';
+}
 function _authGoster(g) { var o = document.getElementById('authOverlay'); if (o) o.style.display = g ? 'flex' : 'none'; }
 
 // Aktif ekranı yeniden çiz (buluttan veri gelince)
@@ -1454,60 +1551,115 @@ function _ekranYenile() {
     if (vf && vf.style.display !== 'none') renderFis();
     if (vg && vg.style.display !== 'none') gelenlerRender();
     if (vs && vs.style.display !== 'none') {
-        if (document.getElementById('fisDetay').style.display !== 'none' && _acikFisId != null && fisBul(_acikFisId)) fisAc(_acikFisId);
-        else fislerRender();
+        var det = document.getElementById('fisDetay');
+        if (det && det.style.display !== 'none' && _acikFisId != null) {
+            if (fisBul(_acikFisId)) fisAc(_acikFisId);
+            // Açık olan sipariş başka cihazda silindi → LİSTEYE DÖN (ekran boş detayda kilitli kalmasın)
+            else { try { fisGeri(); } catch (e) {} fislerRender(); }
+        } else fislerRender();
     }
 }
 // Kurları alanlara + localStorage'a yaz (buluttan gelince)
 function _kurlariUygula(k) {
     if (!k) return;
     for (var i = 0; i < _kurFields.length; i++) {
-        if (k[_kurFields[i]] !== undefined) { var el = document.getElementById(_kurFields[i]); if (el) el.value = k[_kurFields[i]]; }
+        var kv = k[_kurFields[i]];
+        if (kv === undefined || kv === '' || isNaN(parseFloat(kv))) continue;   // boş/geçersiz kuru UYGULAMA
+        var el = document.getElementById(_kurFields[i]); if (el) el.value = kv;
     }
     try { localStorage.setItem('smh_kurlar', JSON.stringify(kurlarRaw())); } catch(e) {}
 }
 function _durumJson() { return JSON.stringify({ urunler: urunler, fisler: fisler, kurlar: kurlarRaw() }); }
 
+// Yerelde kaybolan fişleri MEZAR TAŞINA yaz — silme emri bağlantı olmasa da kaybolmasın.
+// Her yerel kayıtta çalışır; bağlantı gerekmez, sonuç IndexedDB'ye yazılır.
+function _mezarTasiGuncelle() {
+    var simdi = {};
+    (fisler || []).forEach(function (f) { if (f && f.id != null) simdi[String(f.id)] = 1; });
+    if (_oncekiIdler) {
+        Object.keys(_oncekiIdler).forEach(function (id) {
+            if (!simdi[id]) _silinen[id] = 1;      // yerelde vardı, artık yok → SİLİNMİŞ
+        });
+    }
+    Object.keys(simdi).forEach(function (id) { if (_silinen[id]) delete _silinen[id]; });  // geri eklendiyse mezar taşını kaldır
+    _oncekiIdler = simdi;
+    _senkronDurumKaydet();
+}
 // Yerel değişikliği buluta yaz (geciktirmeli) — her fiş AYRI kayıt (küçük yazımlar)
 function bulutYaz() {
-    if (!_user || !_fbReady || _applyingRemote) return;
+    if (_applyingRemote) return;      // buluttan uyguluyoruz → geri yazma (echo yok)
+    _mezarTasiGuncelle();             // ÖNCE kuyruğu kalıcılaştır: bağlantı olmasa da silme emri korunur
+    if (!_user || !_fbReady) return;  // bağlantı yok → kuyruk diskte bekler, bağlanınca _kuyruguBosalt gönderir
     _pendingPush = true;   // gönderim bitene kadar gelen bulutu yok say (saat farkından BAĞIMSIZ yarış önleme)
     clearTimeout(_pushWatchdog);
-    _pushWatchdog = setTimeout(function () { _pendingPush = false; }, 30000);  // TAKILMA KORUMASI: 30sn içinde bitmezse bayrağı bırak (yoksa gelen güncellemeler sonsuza dek engellenir)
+    _pushWatchdog = setTimeout(function () { _pendingPush = false; _gonderimAktif = false; _rebuildZamanla(); }, 30000);  // TAKILMA KORUMASI
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(_bulutGonder, 150);
 }
+// Bekleyen yerel değişiklik/silme var mı? (bağlantı kurulunca çağrılır)
+function _kuyruguBosalt() {
+    if (!_user || !_fbReady || !_fbRef) return;
+    if (!_bekleyenIsVar()) return;
+    _pendingPush = true;
+    clearTimeout(_pushTimer);
+    _pushTimer = setTimeout(_bulutGonder, 50);
+}
+function _bekleyenIsVar() {
+    if (Object.keys(_silinen).length) return true;
+    for (var i = 0; i < (fisler || []).length; i++) {
+        var f = fisler[i]; if (!f || f.id == null) continue;
+        try { if (_lastFisMap[String(f.id)] !== _kanonikJson(f)) return true; } catch (e) {}
+    }
+    return false;
+}
 function _bulutGonder() {
-    if (!_user || !_fbRef) { _pendingPush = false; return; }
+    if (!_user || !_fbReady || !_fbRef) { _pendingPush = false; return; }   // bağlanınca _kuyruguBosalt tekrar dener
+    if (_gonderimAktif) { _tekrarGerekli = true; return; }   // zaten bir gönderim zinciri uçuyor → çakışma yok
+    _gonderimAktif = true; _tekrarGerekli = false;
     _pendingPush = true;   // TÜM parçalar gidene kadar yerel veri korunur (gelen bulut ezmez)
     clearTimeout(_pushWatchdog);
-    _pushWatchdog = setTimeout(function () { _pendingPush = false; }, 30000);  // her denemede yenilenir → sadece GERÇEKTEN takılırsa bırakır
+    _pushWatchdog = setTimeout(function () { _pendingPush = false; _gonderimAktif = false; _rebuildZamanla(); }, 30000);  // her denemede yenilenir → sadece GERÇEKTEN takılırsa bırakır
     var base = firebase.database().ref('users/' + _user.uid);
     // Değişen/silinen fişleri topla
     var curMap = {};
-    (fisler || []).forEach(function (f) { if (f && f.id != null) curMap[f.id] = f; });
+    (fisler || []).forEach(function (f) { if (f && f.id != null) curMap[String(f.id)] = f; });
     var jobs = [];
+    // SİLMELER ÖNCE: küçük ve kritik — megabaytlarca resim yüklemesinin arkasında kalmasın
+    Object.keys(_silinen).forEach(function (id) { if (!curMap[id]) jobs.push({ set: false, id: id }); });
     Object.keys(curMap).forEach(function (id) {
         var clean, s;
-        try { clean = JSON.parse(JSON.stringify(curMap[id])); s = JSON.stringify(clean); } catch (e) { return; }
+        try { clean = JSON.parse(JSON.stringify(curMap[id])); s = _kanonikJson(clean); } catch (e) { return; }
         if (_lastFisMap[id] !== s) jobs.push({ set: true, id: id, clean: clean, s: s });
     });
-    Object.keys(_lastFisMap).forEach(function (id) { if (!curMap[id]) jobs.push({ set: false, id: id }); });
     var meta;
     try { meta = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); } catch (e) { meta = { urunler: [], kurlar: {} }; }
+    // Firebase BOŞ diziyi saklamaz (null'a çevirir) → "sepeti temizle" karşı cihaza hiç ulaşmıyordu.
+    // uAdet sayacı boş sepeti açıkça bildirir.
+    meta.uAdet = (urunler || []).length;
+    var metaJson = _kanonikJson(meta);       // updatedAt EKLENMEDEN karşılaştır (yoksa her seferinde "değişmiş" görünür)
     meta.updatedAt = Date.now();
 
     var toplam = jobs.length, i = 0, hata = 0, BATCH = 6;
     function bitir() {
-        base.child('meta').set(meta).catch(function () {});
+        _gonderimAktif = false;
+        _senkronDurumKaydet();   // onaylanan yazma/silmeler diske → uygulama kapansa da tekrarlanmaz
+        // meta'yı SADECE değiştiyse yaz — eskiden her fiş dokunuşunda koşulsuz yazılıp
+        // karşı cihazın sepetini eziyordu. Hata artık sayılıyor (sessizce kaybolmuyor).
+        if (metaJson !== _lastMetaJson) {
+            base.child('meta').set(meta).then(function () { _lastMetaJson = metaJson; }).catch(function () { hata++; });
+        }
         if (hata > 0 && _retryCount < 8) {
             _retryCount++;
             _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
             clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 3000);  // _pendingPush TRUE kalır (yerel korunur)
         } else {
             _retryCount = 0; _pendingPush = false; clearTimeout(_pushWatchdog);
-            if (hata > 0) _bulutDurum('⚠️ ' + hata + ' parça gönderilemedi', '#f87171');
-            else { _senkronIsaretle(); _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7'); }   // yazma başarılı → bulut doğrulandı
+            if (hata > 0) _bulutDurum('⚠️ ' + hata + ' parça gönderilemedi — bağlanınca tekrar denenecek', '#f87171');
+            else _durumBildir();                     // DÜRÜST durum: gerçekten bekleyen iş yoksa "Senkron" der
+            _bekleyenMetaUygula();                   // push sırasında gelen meta'yı şimdi uygula (kayıp yok)
+            _rebuildZamanla();                       // push sırasında gelen bulut olaylarını şimdi işle
+            // Gönderim sürerken yeni değişiklik olduysa hemen ikinci tur (kayıp yok)
+            if (_tekrarGerekli) { _tekrarGerekli = false; clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 100); }
         }
     }
     if (!toplam) { bitir(); return; }
@@ -1519,76 +1671,185 @@ function _bulutGonder() {
         Promise.all(grup.map(function (j) {
             var ref = base.child('fisler/' + j.id);
             return (j.set ? ref.set(j.clean) : ref.remove())
-                .then(function () { if (j.set) _lastFisMap[j.id] = j.s; else delete _lastFisMap[j.id]; })
+                .then(function () {
+                    if (j.set) { _lastFisMap[j.id] = j.s; }
+                    else { delete _lastFisMap[j.id]; delete _silinen[j.id]; delete _cloudJson[j.id]; }  // silme ONAYLANDI → mezar taşı kalkar
+                })
                 .catch(function () { hata++; });
         })).then(sonraki);
     }
     sonraki();
 }
 
-// "Bu cihaz bu hesabın bulut durumunu doğruladı" işareti — SADECE bulutta veri görülünce ya da başarılı yazınca çağrılır
+// Eski sürümlerle uyum için korunuyor. ARTIK seed/silme kararı bu bayrağa DEĞİL,
+// kalıcı "ortak ata" haritasına (_lastFisMap) göre veriliyor → yanlış boşaltma riski yok.
 function _senkronIsaretle() { if (_user) { try { localStorage.setItem('smh_synced_' + _user.uid, '1'); } catch (e) {} } }
-// Bulut dinleyicisini bağla — fişler PARÇA PARÇA (child) gelir; büyük tek-okuma/yazma yok
+
+// Durum çubuğuna DÜRÜST bilgi — gönderilmemiş iş varken "Senkron" DEMEZ
+function _durumBildir() {
+    if (!_user) { _bulutDurum('Giriş yapılmadı', '#94a3b8'); return; }
+    if (_bekleyenIsVar()) _bulutDurum('⏳ Gönderilmeyi bekliyor…', '#fbbf24');
+    else _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
+}
+// Push sırasında gelen meta'yı SAKLA, push bitince uygula (on('value') aynı değeri tekrar yollamaz → kayıp olurdu)
+function _bekleyenMetaUygula() { if (!_bekleyenMeta) return; var m = _bekleyenMeta; _bekleyenMeta = null; _metaUygula(m); }
+function _metaUygula(m) {
+    if (!m) return;
+    // Gelen meta'yı "son bilinen" say → hemen geri yazma döngüsü oluşmasın
+    try { var mc = JSON.parse(JSON.stringify(m)); delete mc.updatedAt; _lastMetaJson = _kanonikJson(mc); } catch (e) {}
+    _applyingRemote = true;
+    try {
+        if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler).catch(function () {}); }
+        else if (m.uAdet === 0) { urunler = []; dbSet('urunler', urunler).catch(function () {}); }   // karşı cihaz sepeti BOŞALTMIŞ
+        _kurlariUygula(m.kurlar);
+    } catch (e) {}
+    _applyingRemote = false;   // HER ZAMAN bırak (donma yok)
+    try { onGirisDegis(); _ekranYenile(); } catch (e) {}
+}
+
+// Bulut olaylarını topluca işle. Gönderim sürerken ERTELENİR ama ASLA DÜŞMEZ.
+// (Eski sürümdeki "if (_pendingPush) return;" olayı kalıcı olarak kaybediyordu — asıl kırılma buydu.)
+function _rebuildZamanla() {
+    clearTimeout(_rebuildTimer);
+    _rebuildTimer = setTimeout(function () {
+        if (_pendingPush) { _rebuildZamanla(); return; }   // gönderim sürüyor → SONRA tekrar dene, kaybetme
+        _birlestirVeUygula();
+    }, 50);
+}
+
+// ===== 3 YÖNLÜ BİRLEŞTİRME: bulut / yerel / ortak ata (_lastFisMap) =====
+//   • mezar taşı varsa             → gösterme (silme onaylanana kadar geri dirilmesin)
+//   • yerelde gönderilmemiş fark   → YEREL kazanır (sonra gönderilir, kayıp yok)
+//   • ata'da var + bulutta yok     → başka cihaz SİLMİŞ → yerelden de kaldır
+//   • ata'da yok + yerelde var     → yeni yerel fiş, henüz gönderilmemiş → KORU
+// Bulut kayıtları _cloudJson'dan TAZE parse edilir → bulutla referans PAYLAŞILMAZ (kirlenme yok).
+function _birlestirVeUygula() {
+    var yerel = {};
+    (fisler || []).forEach(function (f) { if (f && f.id != null) yerel[String(f.id)] = f; });
+    var idler = {};
+    Object.keys(_cloudJson).forEach(function (k) { idler[k] = 1; });
+    Object.keys(yerel).forEach(function (k) { idler[k] = 1; });
+
+    var sonuc = [], supheliSilme = [];
+    Object.keys(idler).forEach(function (id) {
+        if (_silinen[id]) return;                                     // biz sildik, onay bekliyor
+        var bulutta = _cloudJson[id] !== undefined;
+        var yereldeVar = yerel[id] !== undefined;
+        var ata = _lastFisMap[id];
+        if (bulutta && !yereldeVar) {
+            if (ata !== undefined) { supheliSilme.push(id); return; } // ata'da vardı, yerelde yok → silinmiş
+            try { sonuc.push(JSON.parse(_cloudJson[id])); } catch (e) {}   // bulutta YENİ → al
+        } else if (!bulutta && yereldeVar) {
+            if (ata !== undefined) return;                            // bulutta silinmiş → yerelden de kaldır
+            sonuc.push(yerel[id]);                                    // yerelde yeni, gönderilmemiş → KORU
+        } else if (bulutta && yereldeVar) {
+            var yj = null; try { yj = _kanonikJson(yerel[id]); } catch (e) {}
+            // ata YOKSA (eski sürümden geçiş): içerik zaten aynıysa gereksiz yeniden yükleme yapma
+            var kirli = (ata === undefined) ? (yj !== _cloudJson[id]) : (yj !== ata);
+            if (kirli) sonuc.push(yerel[id]);                                   // gönderilmemiş yerel düzenleme → koru
+            else { try { sonuc.push(JSON.parse(_cloudJson[id])); } catch (e) { sonuc.push(yerel[id]); } }  // temiz → bulut kazanır
+        }
+    });
+
+    // GÜVENLİK VALFİ: mezar taşı olmadan çok sayıda fiş silinecekse (yerel veri bozulmuş olabilir) ONAY sor
+    if (supheliSilme.length > 3) {
+        if (!confirm(supheliSilme.length + ' sipariş bu cihazda yok ama bulutta duruyor.\n\nBunlar KALICI olarak silinsin mi?\n\nİptal edersen buluttaki hâlleri geri yüklenir (veri kaybı olmaz).')) {
+            supheliSilme.forEach(function (id) { try { sonuc.push(JSON.parse(_cloudJson[id])); } catch (e) {} });
+            supheliSilme = [];
+        }
+    }
+    supheliSilme.forEach(function (id) { _silinen[id] = 1; });        // onaylandı → buluttan da kaldırılacak
+
+    sonuc.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+    for (var z = 0; z < sonuc.length; z++) { var f = sonuc[z]; if (f && f.id != null) { var n = +f.id; if (!isNaN(n)) f.id = n; } }
+
+    _applyingRemote = true;
+    try {
+        fisler = sonuc;
+        // Bozuk/eksik kayıtlar ekranı çökertmesin. AYRI try: burada bir hata olursa
+        // aşağıdaki ortak ata + disk yazımı ATLANMAMALI (yoksa sonsuz yeniden gönderim olur).
+        try { _fisIdDuzelt(); } catch (e) {}
+        // Ortak ata = SADECE buluttan DOĞRULANMIŞ hâl. Yerel kirli kayıtlar ata'ya yazılmaz
+        // → "gönderilmediği hâlde gönderilmiş sanma" hatası (eski paylaşılan-referans bug'ı) imkânsız.
+        _lastFisMap = {};
+        Object.keys(_cloudJson).forEach(function (id) { _lastFisMap[id] = _cloudJson[id]; });
+        _oncekiIdler = {};
+        fisler.forEach(function (f) { if (f && f.id != null) _oncekiIdler[String(f.id)] = 1; });
+        dbSet('fisler', fisler).catch(function () { _bulutDurum('⚠️ Diske yazılamadı', '#f87171'); });
+        _senkronDurumKaydet();
+        _senkronIsaretle();
+    } catch (e) {}
+    _applyingRemote = false;   // HER ZAMAN bırak (donma yok)
+    try { tabRozetGuncelle(); _ekranYenile(); } catch (e) {}
+    _durumBildir();
+    _kuyruguBosalt();          // birleştirmede korunan yerel değişiklikleri gönder
+}
+
+// Dinleyici koptuğunda (izin/token/ağ) eskiden HİÇBİR ŞEY olmuyordu — sessizce ölüyordu.
+// Artık kullanıcı görüyor ve otomatik yeniden bağlanma denenıyor.
+function _dinleyiciHata(e) {
+    var k = (e && (e.code || e.message)) || 'bilinmiyor';
+    _bulutDurum('⚠️ Bulut bağlantısı koptu (' + k + ') — yeniden deneniyor', '#fbbf24');
+    setTimeout(function () { _sonResync = 0; _yenidenSenkron(); }, 4000);
+}
+// Bulut dinleyicisini bağla — ÖNCE tam durum (ortak ata için), SONRA canlı child olayları
 function baglanCloud() {
     if (!_user || !_fbReady) return;
     _pendingPush = false; clearTimeout(_pushWatchdog);  // yeni bağlantı = temiz durum (takılı bayrak taşınmasın)
     var base = firebase.database().ref('users/' + _user.uid);
-    _fbRef = base; _cloudFis = {}; _lastFisMap = {};
+    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); } catch (e) {} }
+    _fbRef = base;
     var fref = base.child('fisler');
-    // İlk durum kontrolü — SİLME'nin geri dirilmesini önler.
-    // Bayrak SADECE bulut doğrulandığında set edilir (rebuild / başarılı yazma), bağlanır bağlanmaz DEĞİL → seed yarışı yok.
-    fref.once('value').then(function (snap) {
-        var oncedenSenkron = false;
-        try { oncedenSenkron = localStorage.getItem('smh_synced_' + _user.uid) === '1'; } catch (e) {}
-        if (!snap.exists()) {
-            if (!oncedenSenkron && fisler && fisler.length) {
-                _bulutDurum('☁️ İlk yükleme…', '#93c5fd'); bulutYaz();        // GERÇEK ilk kurulum → yerel veriyi buluta yükle
-            } else if (oncedenSenkron && fisler && fisler.length) {
-                // Daha önce senkron olmuştuk, bulut ŞİMDİ boş → başka cihaz HER ŞEYİ SİLDİ → yereli de boşalt (resurrection YOK)
-                _applyingRemote = true; try { fisler = []; dbSet('fisler', fisler); } catch (e) {} _applyingRemote = false;
-                tabRozetGuncelle(); try { _ekranYenile(); } catch (e) {}
-                _bulutDurum('🔄 Güncellendi · ' + (_user.email || ''), '#6ee7b7');
-            }
-        } else {
-            _senkronIsaretle();   // bulutta veri VAR → senkron doğrulandı
-        }
-    }).catch(function () {});
-    // Fişleri yeniden kur (child olayları biriktikçe, kısa gecikmeyle tek sefer)
-    var rebuild = function () {
-        clearTimeout(_rebuildTimer);
-        _rebuildTimer = setTimeout(function () {
-            if (_pendingPush) return;   // kendi yazımız sürerken dokunma
+    // FARKLI HESAP kontrolü — önceki kullanıcının siparişleri yeni hesaba karışmasın
+    var sonUid = null;
+    try { sonUid = localStorage.getItem('smh_son_uid'); } catch (e) {}
+    if (sonUid && sonUid !== _user.uid) {
+        var bekleyen = Object.keys(_silinen).length > 0 || _bekleyenIsVar();
+        if (!bekleyen || confirm('Farklı bir hesapla giriş yapıldı.\n\nBu cihazda önceki hesabın GÖNDERİLMEMİŞ değişiklikleri var; devam edilirse kaybolur.\n\nDevam edilsin mi?')) {
             _applyingRemote = true;
             try {
-                fisler = Object.keys(_cloudFis).map(function (k) { return _cloudFis[k]; }).sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
-                for (var _z = 0; _z < fisler.length; _z++) { var _f = fisler[_z]; if (_f && _f.id != null) { var _n = +_f.id; if (!isNaN(_n)) _f.id = _n; } }
-                _lastFisMap = {};
-                Object.keys(_cloudFis).forEach(function (id) { try { _lastFisMap[id] = JSON.stringify(_cloudFis[id]); } catch (e) {} });
-                dbSet('fisler', fisler);
-                _senkronIsaretle();
+                fisler = []; urunler = [];
+                dbSet('fisler', fisler).catch(function () {}); dbSet('urunler', urunler).catch(function () {});
+                _lastFisMap = {}; _silinen = {}; _oncekiIdler = {}; _lastMetaJson = null;
+                _senkronDurumKaydet();
             } catch (e) {}
-            _applyingRemote = false;   // HER ZAMAN bırak (donma yok)
-            try { _ekranYenile(); } catch (e) {}
-            _bulutDurum('✅ Senkron: ' + (_user.email || ''), '#6ee7b7');
-        }, 50);
-    };
-    fref.on('child_added', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
-    fref.on('child_changed', function (s) { _cloudFis[s.key] = s.val(); rebuild(); });
-    fref.on('child_removed', function (s) { delete _cloudFis[s.key]; rebuild(); });
-    // meta (sepet + kurlar)
+            _applyingRemote = false;
+            try { tabRozetGuncelle(); _ekranYenile(); } catch (e) {}
+        }
+    }
+    try { localStorage.setItem('smh_son_uid', _user.uid); } catch (e) {}
+    _bulutDurum('☁️ Bağlanıyor…', '#93c5fd');
+    fref.once('value').then(function (snap) {
+        var val = snap.val() || {};
+        _cloudJson = {};
+        Object.keys(val).forEach(function (k) { try { _cloudJson[k] = _kanonikJson(val[k]); } catch (e) {} });
+        _ilkYukleme = true;
+        _birlestirVeUygula();     // seed / güncelleme / silme kararını ortak ata verir (bayrağa gerek yok)
+        // Canlı dinleyiciler — SADECE ilk tam durum alındıktan sonra bağlanır
+        fref.on('child_added',   function (s) { try { _cloudJson[s.key] = _kanonikJson(s.val()); } catch (e) {} _rebuildZamanla(); }, _dinleyiciHata);
+        fref.on('child_changed', function (s) { try { _cloudJson[s.key] = _kanonikJson(s.val()); } catch (e) {} _rebuildZamanla(); }, _dinleyiciHata);
+        fref.on('child_removed', function (s) { delete _cloudJson[s.key]; _rebuildZamanla(); }, _dinleyiciHata);
+        _kuyruguBosalt();         // bekleyen silme/düzenleme varsa ŞİMDİ gönder
+    }).catch(function () {
+        // Bulut OKUNAMADI → yerel veriye DOKUNMA (eski sürüm burada cihazı boşaltabiliyordu)
+        _bulutDurum('⚠️ Bulut okunamadı — yerel veriler korundu', '#fbbf24');
+    });
+    // meta (sepet + kurlar) — push sürerken SAKLA, düşürme (eski sürümde kalıcı kayıp oluyordu)
     base.child('meta').on('value', function (s) {
-        if (_pendingPush) return;
         var m = s.val(); if (!m) return;
-        _applyingRemote = true;
-        try {
-            if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler); }
-            _kurlariUygula(m.kurlar);
-        } catch (e) {}
-        _applyingRemote = false;   // HER ZAMAN bırak
-        try { onGirisDegis(); _ekranYenile(); } catch (e) {}
+        if (_pendingPush) { _bekleyenMeta = m; return; }
+        _metaUygula(m);
     }, function () {});
 }
-function _cloudBaslatBekle() { if (_user && _localLoaded && _fbReady) baglanCloud(); }
+// Bağlanma kapısı: 3 koşul da hazır olmalı. Kapı kapalıysa VAZGEÇME — kısa aralıkla tekrar dene.
+// (Eskiden tek denemeydi: yerel yükleme ya da auth geç gelirse cihaz hiç bağlanmıyordu.)
+var _baslatTimer = null;
+function _cloudBaslatBekle() {
+    clearTimeout(_baslatTimer);
+    if (!_user) return;                                    // giriş yok → onAuthStateChanged tekrar çağırır
+    if (_localLoaded && _fbReady) { baglanCloud(); return; }
+    _baslatTimer = setTimeout(_cloudBaslatBekle, 800);
+}
 
 // ⚡ ikonuna dokununca: canlı senkronu tazele + yeni sürüm kontrolü (yeni varsa otomatik yükler)
 function ikonGuncelle() {
@@ -1599,7 +1860,8 @@ function ikonGuncelle() {
     if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistration) {
         navigator.serviceWorker.getRegistration().then(function (reg) { if (reg) try { reg.update(); } catch (e) {} }).catch(function () {});
     }
-    setTimeout(function () { if (_user) _bulutDurum('✅ Güncel · ' + (_user.email || ''), '#6ee7b7'); }, 1300);
+    // DÜRÜST bildirim: koşulsuz "Güncel" yazma — gerçekten bekleyen iş yoksa öyle der
+    setTimeout(function () { if (_user) _durumBildir(); }, 1300);
 }
 
 // En son sürüme zorla güncelle — önbelleği temizler + SW'yi sıfırlar + yeniden yükler (veriler silinmez)
@@ -1609,7 +1871,11 @@ function guncelle() {
     var bitir = function () { try { location.reload(); } catch (e) { location.href = location.pathname + '?g=' + Date.now(); } };
     var p = Promise.resolve();
     if (window.caches && caches.keys) {
-        p = caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); }).catch(function () {});
+        // SADECE bu uygulamanın önbelleklerini sil — aynı origin'deki başka sayfaları bozma
+        p = caches.keys().then(function (keys) {
+            return Promise.all(keys.filter(function (k) { return k.indexOf('sok-nokta') === 0; })
+                                   .map(function (k) { return caches.delete(k); }));
+        }).catch(function () {});
     }
     p.then(function () {
         if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
@@ -1617,6 +1883,7 @@ function guncelle() {
         }
     }).then(bitir).catch(bitir);
     setTimeout(bitir, 2500);  // her ihtimale karşı
+    // NOT: bekleyen silme/düzenleme varsa kaybolmaz — kuyruk IndexedDB'de, açılışta tekrar gönderilir.
 }
 
 // Bağlantı/senkron röntgeni — sorunu ekranda gösterir
@@ -1624,13 +1891,18 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 33');
+    L.push('Sürüm 34');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
     L.push('fbReady: ' + _fbReady + '  localLoaded: ' + _localLoaded);
     L.push('Dinleyici (fbRef): ' + (_fbRef ? 'BAĞLI ✅' : '❌ BAĞLI DEĞİL'));
+    L.push('Service worker: ' + (('serviceWorker' in navigator) ? (navigator.serviceWorker.controller ? 'aktif ✅' : '⚠️ kontrolsüz') : 'yok'));
     L.push('Yerel: ' + fisler.length + ' sipariş, ' + urunler.length + ' fiş ürünü');
+    L.push('Bulut aynası: ' + Object.keys(_cloudJson).length + ' sipariş');
+    L.push('Ortak ata: ' + Object.keys(_lastFisMap).length + ' kayıt');
+    L.push('Bekleyen SİLME: ' + Object.keys(_silinen).length + (Object.keys(_silinen).length ? ' ⏳' : ' ✅'));
+    L.push('Gönderilmemiş değişiklik: ' + (_bekleyenIsVar() ? 'VAR ⏳' : 'yok ✅'));
     if (!u) { alert(L.join('\n') + '\n\n➡️ Önce giriş yap.'); return; }
     _bulutDurum('🔧 Test ediliyor…', '#93c5fd');
     var db = firebase.database();
@@ -1646,8 +1918,13 @@ function baglantiTesti() {
         });
     }).then(function () {
         L.push('\n👉 Sonuç: yazma+okuma çalışıyor.');
+        // Önbellek/SW röntgeni — "eski sürümde takılı kaldım" teşhisi için
+        if (window.caches && caches.keys) {
+            return caches.keys().then(function (ks) { L.push('Önbellekler: ' + (ks.join(', ') || 'yok')); }).catch(function () {});
+        }
+    }).then(function () {
         alert(L.join('\n'));
-        _bulutDurum('✅ Senkron: ' + (u.email || ''), '#6ee7b7');
+        _durumBildir();
     }).catch(function (e) {
         L.push('\n❌ HATA: ' + (e && (e.code || e.message)));
         alert(L.join('\n'));
@@ -1715,7 +1992,10 @@ kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
                 _cloudBaslatBekle();
             } else {
                 if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
-                _lastSyncJson = null; _pendingPush = false; _cloudFis = {}; _lastFisMap = {};
+                // Bellekteki bulut aynasını temizle. Ortak ata (_lastFisMap) ve mezar taşları (_silinen)
+                // KORUNUR — gönderilmemiş silme emirleri çıkış yüzünden kaybolmasın.
+                _lastSyncJson = null; _pendingPush = false; _cloudJson = {}; _bekleyenMeta = null; _lastMetaJson = null; _gonderimAktif = false;
+                clearTimeout(_pushWatchdog); clearTimeout(_rebuildTimer);
                 _authGoster(true);
                 _bulutDurum('Giriş yapılmadı', '#94a3b8');
             }
