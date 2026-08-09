@@ -284,8 +284,7 @@ body {
         <input id="authPass" class="auth-input" type="password" autocomplete="current-password" placeholder="Şifre (en az 6 karakter)">
         <div id="authErr" class="auth-err"></div>
         <button id="authGiris" class="auth-btn giris" onclick="authGiris()">Giriş Yap</button>
-        <button id="authKayit" class="auth-btn kayit" onclick="authKayit()">Yeni Hesap Oluştur</button>
-        <div class="auth-note">İlk kez mi? E-posta + şifre yazıp <b>Yeni Hesap Oluştur</b>'a bas. Sonra aynı bilgilerle diğer cihazlarda <b>Giriş Yap</b>.</div>
+        <div class="auth-note">Bu uygulama tek hesaba özeldir. Yeni kayıt kapalıdır — mevcut e-posta ve şifrenle giriş yap.</div>
     </div>
 </div>
 
@@ -333,7 +332,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 34 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 35 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1472,21 +1471,51 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// Sekmeye/uygulamaya her dönüşte yeniden senkronla — pasifken kaçırılan silme/değişiklikleri yakalar
-var _sonResync = 0;
+function _simdi() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+
+// Sekmeye/uygulamaya her dönüşte yeniden senkronla — pasifken kaçırılan silme/değişiklikleri yakalar.
+//
+// HAFİF YOL: önce buluttaki `rev` sayacını oku (birkaç bayt). Değişmemişse TÜM fiş ağacını
+// (MB'larca fotoğraf) yeniden İNDİRME. Eskiden her odaklanmada tüm arşiv baştan iniyordu.
+//
+// GÜVENLİK: `rev` yalnızca bir OPTİMİZASYONDUR, doğruluk kaynağı DEĞİL. Sayaç herhangi bir
+// sebeple kaçarsa veri eskimesin diye en geç TAM_SENKRON_ARALIK'ta bir tam senkron zorlanır;
+// rev okunamazsa da güvenli tarafta kalınıp tam senkron yapılır.
+var _sonResync = -Infinity, _sonRev = null, _revBilindi = false, _sonTamSenkron = 0, _dinleyiciCanli = false;
+var TAM_SENKRON_ARALIK = 600000;   // 10 dk
 function _yenidenSenkron() {
     if (!_user || !_fbReady) return;
     // NOT: eski sürümdeki "if (_pendingPush) return;" burada TAKILI bir push yüzünden yeniden
     // senkronu KALICI engelliyordu. Artık gerek yok: 3 yönlü birleştirme gönderilmemiş yerel
     // değişikliği koruyor ve kuyruk kalıcı → yeniden bağlanmak her an güvenli.
-    var now = (window.performance && performance.now) ? performance.now() : 0;
-    if (now && (now - _sonResync) < 3000) return;  // çok sık tetikleme
+    var now = _simdi();
+    if (now - _sonResync < 3000) return;  // çok sık tetikleme
     _sonResync = now;
-    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
+    // Dinleyici ÖLÜYSE hafif yola ASLA düşme: rev'e sormanın anlamı yok, canlı olaylar gelmiyor.
+    if (!_fbRef || !_dinleyiciCanli) { _tamSenkron(); return; }
+    if (!_revBilindi || (now - _sonTamSenkron) > TAM_SENKRON_ARALIK) { _tamSenkron(); return; }
+    // rev'e CANLI dinleyici BAĞLAMIYORUZ (aşağıda açıklandı) → bu okuma gerçek bir sunucu
+    // gidiş-dönüşüdür ve dinleyicilerin kaçırdığı değişikliği bağımsız olarak tespit edebilir.
+    firebase.database().ref('users/' + _user.uid + '/rev').once('value').then(function (s) {
+        if (s.val() === _sonRev) {        // hiçbir şey değişmemiş → büyük indirme YOK
+            _durumBildir();
+            _kuyruguBosalt();             // yine de bekleyen yerel işi gönder
+            return;
+        }
+        _tamSenkron();
+    }).catch(function () { _tamSenkron(); });
+}
+// Dinleyicileri kapat + baştan tam senkron
+function _tamSenkron() {
+    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.child('rev').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
+    _dinleyiciCanli = false; _sonRev = null; _revBilindi = false; _sonTamSenkron = 0;
     baglanCloud();
 }
 document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') _yenidenSenkron(); });
 window.addEventListener('focus', _yenidenSenkron);
+// 10 dk'lık güvenlik ağı SADECE _yenidenSenkron çağrılınca değerlendiriliyor; sekme gün boyu önde
+// kalırsa hiç odak olayı doğmaz. Periyodik yoklama ile güvenlik ağını gerçekten çalıştır.
+setInterval(function () { if (document.visibilityState === 'visible') _yenidenSenkron(); }, 60000);
 
 /* ==================== FIREBASE BULUT SENKRON ==================== */
 var _fbConfig = {
@@ -1604,8 +1633,18 @@ function _kuyruguBosalt() {
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(_bulutGonder, 50);
 }
+// meta'nın (sepet + kurlar) ŞU ANKİ kanonik hâli — gönderilmemiş meta'yı tespit etmek için
+function _metaJsonSimdi() {
+    var m;
+    try { m = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); }
+    catch (e) { m = { urunler: [], kurlar: {} }; }
+    m.uAdet = (urunler || []).length;
+    return _kanonikJson(m);
+}
 function _bekleyenIsVar() {
     if (Object.keys(_silinen).length) return true;
+    // GÖNDERİLMEMİŞ meta da bekleyen iştir — yoksa başarısız bir sepet/kur yazımı hiç kurtarılmaz
+    try { if (_lastMetaJson !== null && _metaJsonSimdi() !== _lastMetaJson) return true; } catch (e) {}
     for (var i = 0; i < (fisler || []).length; i++) {
         var f = fisler[i]; if (!f || f.id == null) continue;
         try { if (_lastFisMap[String(f.id)] !== _kanonikJson(f)) return true; } catch (e) {}
@@ -1645,22 +1684,41 @@ function _bulutGonder() {
         _senkronDurumKaydet();   // onaylanan yazma/silmeler diske → uygulama kapansa da tekrarlanmaz
         // meta'yı SADECE değiştiyse yaz — eskiden her fiş dokunuşunda koşulsuz yazılıp
         // karşı cihazın sepetini eziyordu. Hata artık sayılıyor (sessizce kaybolmuyor).
-        if (metaJson !== _lastMetaJson) {
-            base.child('meta').set(meta).then(function () { _lastMetaJson = metaJson; }).catch(function () { hata++; });
-        }
-        if (hata > 0 && _retryCount < 8) {
-            _retryCount++;
-            _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
-            clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 3000);  // _pendingPush TRUE kalır (yerel korunur)
-        } else {
+        var metaYazildi = (metaJson !== _lastMetaJson);
+        // meta yazımının SONUCU belli olmadan karar VERME. Eskiden `set` beklenmiyordu; `hata++`
+        // karardan sonra çalıştığı için başarısız meta'da bile "✅ Senkron" yazılıp tekrar denenmiyordu.
+        var pMeta = metaYazildi
+            ? base.child('meta').set(meta).then(function () { _lastMetaJson = metaJson; }).catch(function () { hata++; })
+            : Promise.resolve();
+        pMeta.then(function () {
+            if (hata > 0 && _retryCount < 8) {
+                _retryCount++;
+                _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
+                clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 3000);  // _pendingPush TRUE kalır (yerel korunur)
+                return;
+            }
             _retryCount = 0; _pendingPush = false; clearTimeout(_pushWatchdog);
+            // GERÇEKTEN bir şey yazdıysak değişiklik sayacını ilerlet → diğer cihazlar
+            // "değişti mi?" sorusunu tüm ağacı indirmeden yanıtlar. Sunucu saati kullanılır
+            // (istemci saat farkı bizi daha önce yakmıştı). Boş turda sayaç ARTMAZ, yoksa
+            // karşı cihaz boş yere tam senkron yapardı.
+            // Yazdıktan SONRA geri okuyoruz: yoksa kendi yazımız yüzünden bir sonraki
+            // odaklanmada kendimize gereksiz bir tam senkron yaptırırdık.
+            if (hata === 0 && (toplam > 0 || metaYazildi)) {
+                try {
+                    base.child('rev').set(firebase.database.ServerValue.TIMESTAMP)
+                        .then(function () { return base.child('rev').once('value'); })
+                        .then(function (s) { _sonRev = s.val(); _revBilindi = true; })
+                        .catch(function () { _revBilindi = false; });
+                } catch (e) { _revBilindi = false; }
+            }
             if (hata > 0) _bulutDurum('⚠️ ' + hata + ' parça gönderilemedi — bağlanınca tekrar denenecek', '#f87171');
             else _durumBildir();                     // DÜRÜST durum: gerçekten bekleyen iş yoksa "Senkron" der
             _bekleyenMetaUygula();                   // push sırasında gelen meta'yı şimdi uygula (kayıp yok)
             _rebuildZamanla();                       // push sırasında gelen bulut olaylarını şimdi işle
             // Gönderim sürerken yeni değişiklik olduysa hemen ikinci tur (kayıp yok)
             if (_tekrarGerekli) { _tekrarGerekli = false; clearTimeout(_pushTimer); _pushTimer = setTimeout(_bulutGonder, 100); }
-        }
+        });
     }
     if (!toplam) { bitir(); return; }
     // Küçük gruplar halinde SIRAYLA yaz — bağlantıyı yormaz; her başarıda işaretle, başarısızı tekrar dener
@@ -1789,15 +1847,20 @@ function _birlestirVeUygula() {
 // Artık kullanıcı görüyor ve otomatik yeniden bağlanma denenıyor.
 function _dinleyiciHata(e) {
     var k = (e && (e.code || e.message)) || 'bilinmiyor';
+    // Firebase bir dinleyiciyi İPTAL ettiğinde kendiliğinden geri gelmez → canlı olaylar durur.
+    _dinleyiciCanli = false;
     _bulutDurum('⚠️ Bulut bağlantısı koptu (' + k + ') — yeniden deneniyor', '#fbbf24');
-    setTimeout(function () { _sonResync = 0; _yenidenSenkron(); }, 4000);
+    // rev'e sormanın anlamı yok (dinleyici zaten ölü) → DOĞRUDAN tam senkron.
+    setTimeout(function () { _sonResync = -Infinity; _tamSenkron(); }, 4000);
 }
 // Bulut dinleyicisini bağla — ÖNCE tam durum (ortak ata için), SONRA canlı child olayları
 function baglanCloud() {
     if (!_user || !_fbReady) return;
-    _pendingPush = false; clearTimeout(_pushWatchdog);  // yeni bağlantı = temiz durum (takılı bayrak taşınmasın)
+    // Uçuşta bir gönderim VARSA korumayı düşürme: meta en sonda yazılır, buluttaki meta hâlâ ESKİ;
+    // bayrağı burada indirirsek meta dinleyicisi eski sepeti uygulayıp gönderilmekte olanı ezer.
+    if (!_gonderimAktif) { _pendingPush = false; clearTimeout(_pushWatchdog); }
     var base = firebase.database().ref('users/' + _user.uid);
-    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); } catch (e) {} }
+    if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.child('rev').off(); } catch (e) {} }
     _fbRef = base;
     var fref = base.child('fisler');
     // FARKLI HESAP kontrolü — önceki kullanıcının siparişleri yeni hesaba karışmasın
@@ -1829,9 +1892,20 @@ function baglanCloud() {
         fref.on('child_added',   function (s) { try { _cloudJson[s.key] = _kanonikJson(s.val()); } catch (e) {} _rebuildZamanla(); }, _dinleyiciHata);
         fref.on('child_changed', function (s) { try { _cloudJson[s.key] = _kanonikJson(s.val()); } catch (e) {} _rebuildZamanla(); }, _dinleyiciHata);
         fref.on('child_removed', function (s) { delete _cloudJson[s.key]; _rebuildZamanla(); }, _dinleyiciHata);
+        _dinleyiciCanli = true;          // canlı olaylar bağlandı
+        _sonTamSenkron = _simdi();
+        // rev'i CANLI DİNLEMİYORUZ — bilerek. Dinleseydik, odaklanma kontrolündeki once('value')
+        // aynı yolun SDK önbelleğinden karşılanır ve kendi dinleyicimizin değerini KENDİSİYLE
+        // karşılaştırmış olurduk → sonuç daima "eşit", hiçbir kaçan değişiklik tespit edilemezdi.
+        base.child('rev').once('value')
+            .then(function (s) { _sonRev = s.val(); _revBilindi = true; })
+            .catch(function () { _revBilindi = false; });   // bilmiyoruz → sonraki odaklanmada tam senkron
         _kuyruguBosalt();         // bekleyen silme/düzenleme varsa ŞİMDİ gönder
     }).catch(function () {
-        // Bulut OKUNAMADI → yerel veriye DOKUNMA (eski sürüm burada cihazı boşaltabiliyordu)
+        // Bulut OKUNAMADI → yerel veriye DOKUNMA (eski sürüm burada cihazı boşaltabiliyordu).
+        // Sayaç durumunu SIFIRLA: yarım kalan senkron "güncelim" sanılıp hafif yola sapmasın,
+        // bir sonraki odaklanmada HEMEN tam senkron denensin (10dk beklemesin).
+        _sonRev = null; _revBilindi = false; _sonTamSenkron = 0; _dinleyiciCanli = false;
         _bulutDurum('⚠️ Bulut okunamadı — yerel veriler korundu', '#fbbf24');
     });
     // meta (sepet + kurlar) — push sürerken SAKLA, düşürme (eski sürümde kalıcı kayıp oluyordu)
@@ -1856,7 +1930,8 @@ function ikonGuncelle() {
     var lg = document.getElementById('logoBtn');
     if (lg) { lg.classList.add('donuyor'); setTimeout(function () { lg.classList.remove('donuyor'); }, 650); }
     _bulutDurum('🔄 Yenileniyor…', '#93c5fd');
-    _sonResync = 0; _yenidenSenkron();   // buluttan yeniden senkron
+    // Manuel yenileme = "optimizasyona güvenme" demektir → TAM senkronu zorla
+    _sonResync = -Infinity; _revBilindi = false; _sonTamSenkron = 0; _yenidenSenkron();
     if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistration) {
         navigator.serviceWorker.getRegistration().then(function (reg) { if (reg) try { reg.update(); } catch (e) {} }).catch(function () {});
     }
@@ -1891,7 +1966,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 34');
+    L.push('Sürüm 35');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
@@ -1940,14 +2015,9 @@ function authGiris() {
     _authErr('Giriş yapılıyor…');
     firebase.auth().signInWithEmailAndPassword(em, pw).catch(function(e) { _authErr(_authHata(e)); });
 }
-function authKayit() {
-    var em = (document.getElementById('authEmail').value || '').trim();
-    var pw = document.getElementById('authPass').value || '';
-    if (!em || !pw) { _authErr('E-posta ve şifre gir.'); return; }
-    if (pw.length < 6) { _authErr('Şifre en az 6 karakter olmalı.'); return; }
-    _authErr('Hesap oluşturuluyor…');
-    firebase.auth().createUserWithEmailAndPassword(em, pw).catch(function(e) { _authErr(_authHata(e)); });
-}
+// KAYIT KAPALI — uygulama tek hesaba özel. Asıl koruma Firebase Auth konsolunda
+// (Authentication → Settings → kullanıcı oluşturmayı kapat); buradaki sadece arayüz tarafı.
+function authKayit() { _authErr('Yeni kayıt kapalıdır. Mevcut hesapla giriş yap.'); }
 function authCikis() {
     if (!confirm('Çıkış yapılsın mı? (Veriler bulutta kalır; tekrar giriş yapınca geri gelir.)')) return;
     if (firebase && firebase.auth) firebase.auth().signOut();
@@ -1955,8 +2025,9 @@ function authCikis() {
 function _authHata(e) {
     var c = (e && e.code) || '';
     if (c.indexOf('invalid-credential') >= 0 || c.indexOf('wrong-password') >= 0) return 'E-posta veya şifre hatalı.';
-    if (c.indexOf('user-not-found') >= 0) return 'Böyle bir hesap yok. "Yeni Hesap Oluştur"a bas.';
+    if (c.indexOf('user-not-found') >= 0) return 'Böyle bir hesap yok. E-postayı kontrol et.';
     if (c.indexOf('email-already-in-use') >= 0) return 'Bu e-posta zaten kayıtlı. "Giriş Yap"a bas.';
+    if (c.indexOf('operation-not-allowed') >= 0 || c.indexOf('admin-restricted') >= 0) return 'Yeni kayıt kapalıdır.';
     if (c.indexOf('invalid-email') >= 0) return 'Geçersiz e-posta adresi.';
     if (c.indexOf('weak-password') >= 0) return 'Şifre en az 6 karakter olmalı.';
     if (c.indexOf('network') >= 0) return 'İnternet bağlantısı yok.';
@@ -1991,10 +2062,11 @@ kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
                 _bulutDurum('☁️ Bağlanıyor…', '#93c5fd');
                 _cloudBaslatBekle();
             } else {
-                if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
+                if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.child('rev').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
                 // Bellekteki bulut aynasını temizle. Ortak ata (_lastFisMap) ve mezar taşları (_silinen)
                 // KORUNUR — gönderilmemiş silme emirleri çıkış yüzünden kaybolmasın.
                 _lastSyncJson = null; _pendingPush = false; _cloudJson = {}; _bekleyenMeta = null; _lastMetaJson = null; _gonderimAktif = false;
+                _sonRev = null; _revBilindi = false; _sonTamSenkron = 0; _dinleyiciCanli = false;   // yeni oturum tam senkronla başlasın
                 clearTimeout(_pushWatchdog); clearTimeout(_rebuildTimer);
                 _authGoster(true);
                 _bulutDurum('Giriş yapılmadı', '#94a3b8');
