@@ -332,7 +332,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 35 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 36 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1626,21 +1626,41 @@ function bulutYaz() {
     _pushTimer = setTimeout(_bulutGonder, 150);
 }
 // Bekleyen yerel değişiklik/silme var mı? (bağlantı kurulunca çağrılır)
+var _sonKuyrukFlush = -Infinity, _bosTur = 0;
 function _kuyruguBosalt() {
     if (!_user || !_fbReady || !_fbRef) return;
-    if (!_bekleyenIsVar()) return;
+    if (!_bekleyenIsVar()) { _bosTur = 0; return; }
+    // DÖNGÜ FRENİ: "bekleyen iş" gönderiliyor ama bir türlü bitmiyorsa (v35'teki meta
+    // uyuşmazlığı gibi) buluta saniyede onlarca yazma yapma. DURMA — sadece yavaşla,
+    // yoksa gerçek bekleyen iş hiç gitmez. Israr ederse kullanıcıya bildir.
+    var t = _simdi();
+    if (t - _sonKuyrukFlush < 2000) _bosTur++; else _bosTur = 0;
+    _sonKuyrukFlush = t;
+    var gecikme = (_bosTur > 3) ? 5000 : 50;
+    if (_bosTur > 8) _bulutDurum('⚠️ Senkron tekrar tekrar deneniyor — ⚡ ile yenile', '#fbbf24');
     _pendingPush = true;
     clearTimeout(_pushTimer);
-    _pushTimer = setTimeout(_bulutGonder, 50);
+    _pushTimer = setTimeout(_bulutGonder, gecikme);
 }
-// meta'nın (sepet + kurlar) ŞU ANKİ kanonik hâli — gönderilmemiş meta'yı tespit etmek için
-function _metaJsonSimdi() {
-    var m;
-    try { m = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); }
-    catch (e) { m = { urunler: [], kurlar: {} }; }
-    m.uAdet = (urunler || []).length;
-    return _kanonikJson(m);
+// meta karşılaştırması için TEK NORMALİZE BİÇİM.
+// ŞART: Firebase BOŞ diziyi/nesneyi saklamaz → yazdığımız `urunler: []` bulutta HİÇ görünmez.
+// İki taraf farklı şekillerde karşılaştırılırsa "hep değişmiş" sanılır ve sonsuz
+// yaz-oku-yaz döngüsü oluşur (v35'te bu oldu). Her iki taraf da BURADAN geçmeli.
+function _metaNormalize(m) {
+    m = m || {};
+    var u = Array.isArray(m.urunler) ? m.urunler : (m.urunler && typeof m.urunler === 'object'
+            ? Object.keys(m.urunler).sort(function (x, y) { return x - y; }).map(function (k) { return m.urunler[k]; })
+            : []);
+    var k = (m.kurlar && typeof m.kurlar === 'object') ? m.kurlar : {};
+    var kn = {};   // kur değerleri metne sabitlenir (sayı/metin farkı döngü yapmasın)
+    Object.keys(k).sort().forEach(function (a2) { if (k[a2] !== undefined && k[a2] !== null) kn[a2] = String(k[a2]); });
+    var o;
+    try { o = JSON.parse(JSON.stringify({ urunler: u, kurlar: kn })); } catch (e) { o = { urunler: [], kurlar: {} }; }
+    o.uAdet = u.length;
+    return _kanonikJson(o);
 }
+// meta'nın ŞU ANKİ hâli — gönderilmemiş meta'yı tespit etmek için
+function _metaJsonSimdi() { return _metaNormalize({ urunler: urunler, kurlar: kurlarRaw() }); }
 function _bekleyenIsVar() {
     if (Object.keys(_silinen).length) return true;
     // GÖNDERİLMEMİŞ meta da bekleyen iştir — yoksa başarısız bir sepet/kur yazımı hiç kurtarılmaz
@@ -1675,7 +1695,7 @@ function _bulutGonder() {
     // Firebase BOŞ diziyi saklamaz (null'a çevirir) → "sepeti temizle" karşı cihaza hiç ulaşmıyordu.
     // uAdet sayacı boş sepeti açıkça bildirir.
     meta.uAdet = (urunler || []).length;
-    var metaJson = _kanonikJson(meta);       // updatedAt EKLENMEDEN karşılaştır (yoksa her seferinde "değişmiş" görünür)
+    var metaJson = _metaNormalize(meta);     // bulutla AYNI biçimde karşılaştır (yoksa sonsuz döngü)
     meta.updatedAt = Date.now();
 
     var toplam = jobs.length, i = 0, hata = 0, BATCH = 6;
@@ -1731,7 +1751,11 @@ function _bulutGonder() {
             return (j.set ? ref.set(j.clean) : ref.remove())
                 .then(function () {
                     if (j.set) { _lastFisMap[j.id] = j.s; }
-                    else { delete _lastFisMap[j.id]; delete _silinen[j.id]; delete _cloudJson[j.id]; }  // silme ONAYLANDI → mezar taşı kalkar
+                    // Silme yazildi. Ama mezar tasini HENUZ KALDIRMA: elimizdeki bulut goruntusu
+                    // bayat olabilir; kaldirirsak birlestirme bu fisi "bulutta YENI" sanip GERI GETIRIR
+                    // (v35'te tam olarak bu oldu). Mezar tasi, bulut bu id'yi GERCEKTEN yok gosterince
+                    // _birlestirVeUygula icinde kalkar.
+                    else { delete _lastFisMap[j.id]; delete _cloudJson[j.id]; }
                 })
                 .catch(function () { hata++; });
         })).then(sonraki);
@@ -1754,7 +1778,7 @@ function _bekleyenMetaUygula() { if (!_bekleyenMeta) return; var m = _bekleyenMe
 function _metaUygula(m) {
     if (!m) return;
     // Gelen meta'yı "son bilinen" say → hemen geri yazma döngüsü oluşmasın
-    try { var mc = JSON.parse(JSON.stringify(m)); delete mc.updatedAt; _lastMetaJson = _kanonikJson(mc); } catch (e) {}
+    try { _lastMetaJson = _metaNormalize(m); } catch (e) {}
     _applyingRemote = true;
     try {
         if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler).catch(function () {}); }
@@ -1817,6 +1841,10 @@ function _birlestirVeUygula() {
         }
     }
     supheliSilme.forEach(function (id) { _silinen[id] = 1; });        // onaylandı → buluttan da kaldırılacak
+
+    // MEZAR TASI OMRU: yalnizca bulut o id'yi GERCEKTEN yok gosterdiginde kalkar.
+    // Boylece bayat bir bulut goruntusu silinmis siparisi geri diriltemez.
+    Object.keys(_silinen).forEach(function (id) { if (_cloudJson[id] === undefined) delete _silinen[id]; });
 
     sonuc.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
     for (var z = 0; z < sonuc.length; z++) { var f = sonuc[z]; if (f && f.id != null) { var n = +f.id; if (!isNaN(n)) f.id = n; } }
@@ -1966,7 +1994,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 35');
+    L.push('Sürüm 36');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
