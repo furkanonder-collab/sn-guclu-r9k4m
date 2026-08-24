@@ -183,15 +183,18 @@ body {
 .ug-inp { width: 60px; background: #0b1120; border: 1px solid #334155; border-radius: 8px; color: #f1f5f9; font-size: 13px; padding: 6px 4px; text-align: center; outline: none; }
 .ug-inp:focus { border-color: #6366f1; }
 .swipe-act.geldi { background: #16a34a; }
-.ted-grup { margin-bottom: 18px; }
-.ted-bas { font-size: 15px; font-weight: 800; color: #f1f5f9; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-.ted-say { font-size: 11px; font-weight: 700; color: #94a3b8; background: rgba(148,163,184,0.14); padding: 2px 9px; border-radius: 999px; }
-.takip-kart { display: flex; align-items: center; gap: 10px; background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.08); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
-.takip-foto { width: 46px; height: 46px; border-radius: 9px; object-fit: cover; background: #0b1120; flex-shrink: 0; cursor: pointer; }
-.takip-foto.no { display: flex; align-items: center; justify-content: center; color: #334155; font-size: 20px; cursor: default; }
-.takip-info { flex: 1; min-width: 0; }
-.takip-ust { font-size: 13px; color: #e2e8f0; }
-.takip-info .ug-durum { font-size: 12px; margin-top: 3px; }
+/* Sipariş kartındaki gelme durumu (Gelenler sekmesinin yerine geçti) */
+.fis-gelen { display: flex; align-items: center; gap: 8px; margin-top: 7px; font-size: 11.5px; font-weight: 700; }
+.fis-gelen .say { color: #94a3b8; white-space: nowrap; }
+.fis-gelen .say b { color: #22c55e; }
+.fis-gelen .eksik { color: #f87171; white-space: nowrap; }
+.fis-gelen .tamam { color: #22c55e; white-space: nowrap; }
+.fis-bar { flex: 1; min-width: 40px; height: 6px; border-radius: 999px; background: rgba(148,163,184,0.16); overflow: hidden; display: flex; }
+.fis-bar i { display: block; height: 100%; }
+.fis-bar i.g { background: #22c55e; }
+.fis-bar i.y { background: #f87171; }
+.urun-filtre { margin: 4px 0 14px; }
+.filtre-bos { text-align: center; color: #64748b; font-size: 13px; padding: 26px 10px; }
 .fis-toplam { font-size: 18px; font-weight: 800; color: #34d399; }
 
 .btn-geri { background: rgba(148,163,184,0.1); border: none; color: #94a3b8; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; cursor: pointer; margin-bottom: 12px; }
@@ -332,7 +335,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 37 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 38 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -381,17 +384,16 @@ body {
     <div id="fisDetay" style="display:none"></div>
 </div>
 
-<!-- ============ GELENLER (tedarikçi bazlı ürün takibi) ============ -->
-<div id="view-gelenler" style="display:none">
-    <div id="gelenlerList"></div>
-</div>
+<!-- NOT: "Gelenler" sekmesi KALDIRILDI (v38). Ürünlerin gelme takibi zaten siparişin
+     içinde yapılıyordu; o sekme aynı ürünleri yine sipariş adına göre gruplayıp
+     TÜM fotoğrafları (yüzlerce, ~23 MB) tek sayfaya basıyordu. Yerine sipariş
+     kartında gelme çubuğu + hem listede hem sipariş içinde filtre kondu. -->
 
 <!-- Alt sekme çubuğu -->
 <nav class="tabbar">
     <button id="tab-urun" class="aktif" onclick="tabGoster('urun')"><span class="ico">➕</span><span>Ürün Ekle</span></button>
     <button id="tab-fis" onclick="tabGoster('fis')"><span class="ico">🧾</span><span id="tabFisEt">Fiş</span></button>
     <button id="tab-siparisler" onclick="tabGoster('siparisler')"><span class="ico">📋</span><span id="tabSiparisEt">Siparişler</span></button>
-    <button id="tab-gelenler" onclick="tabGoster('gelenler')"><span class="ico">📦</span><span>Gelenler</span></button>
 </nav>
 
 <input type="file" accept="image/*" capture="environment" id="fotoInput" style="display:none" onchange="fotoYuklendi(this)">
@@ -438,8 +440,11 @@ var _siparisScroll = 0;  // Siparişler listesindeki kaydırma konumu (fişten �
 var _galeri = [], _galeriIndex = 0, _galeriMeta = []; // fiş içi ürün resmi galerisi (+ her resmin fiş/ürün bilgisi)
 var _zoomScale = 1, _zoomX = 0, _zoomY = 0; // foto modal yakınlaştırma / kaydırma
 var _acikFisId = null; // detayda açık olan fiş (kaydırarak sipariş gezme)
-var _siparisFiltre = 0; // 0=Tümü, 1=Bekleyen (verildi+yolda), 2=Geldi
-var _gelenlerFiltre = 0; // Gelenler sekmesi (ürün bazlı): 0=Bekleyen, 1=Gelen, 2=Tümü
+// Siparişler listesi filtresi — ÜRÜNLERİN gelme durumuna göre (sipariş durum rozetine göre değil):
+// 0=Tümü, 1=Eksiği olanlar (gelmemiş/bekleyen ürünü var), 2=Tamamlananlar (tüm ürünleri geldi)
+var _siparisFiltre = 0;
+// Sipariş DETAYINDA ürün filtresi: 0=Tümü, 1=Bekleyen, 2=Geldi, 3=Gelmedi
+var _urunFiltre = 0;
 var DURUMLAR = [
   { kisa: 'Verildi', ikon: '🟡', renk: '#fbbf24' },
   { kisa: 'Yolda',   ikon: '🔵', renk: '#60a5fa' },
@@ -735,11 +740,14 @@ function girisFotoGuncelle() {
     else w.innerHTML = '<button class="foto-ekle" onclick="fotoGirisSec()">📷</button>';
 }
 function fotoBuyutEl(el) {
-    var cls = el.classList.contains('urun-foto') ? '.urun-foto' : (el.classList.contains('takip-foto') ? '.takip-foto' : null);
+    var cls = el.classList.contains('urun-foto') ? '.urun-foto' : null;
     if (cls) {
-        // Aynı bağlamdaki tüm ürün resimlerini galeri olarak topla (+ fiş/ürün bilgisi)
-        var c = el.closest('#fisDetay') || el.closest('#fisUrunList') || el.closest('#gelenlerList') || document;
-        var imgs = [].slice.call(c.querySelectorAll(cls));
+        // Aynı bağlamdaki tüm ürün resimlerini galeri olarak topla (+ fiş/ürün bilgisi).
+        // Filtre açıkken GİZLİ kartların resmi galeriye girmesin → sadece görünenleri al.
+        var c = el.closest('#fisDetay') || el.closest('#fisUrunList') || document;
+        var imgs = [].slice.call(c.querySelectorAll(cls)).filter(function (x) {
+            var w = x.closest('.swipe-wrap'); return !w || w.style.display !== 'none';
+        });
         _galeri = imgs.map(function(x) { return x.src; });
         _galeriMeta = imgs.map(function(x) { var fi = x.getAttribute('data-fis'), j = x.getAttribute('data-j'); return (fi != null && j != null) ? { fisId: fi, j: +j } : null; });
         _galeriIndex = imgs.indexOf(el); if (_galeriIndex < 0) _galeriIndex = 0;
@@ -917,9 +925,46 @@ function urunGeldiOzet(fs) {
     (fs.urunler || []).forEach(function (u) { if (u.geldi === true) o.geldi++; else if (u.geldi === false) o.gelmedi++; else o.bek++; });
     return o;
 }
-function _takipYenile(fisId) { var g = document.getElementById('view-gelenler'); if (g && g.style.display !== 'none') gelenlerRender(); else fisAc(fisId); }
+// --- Sipariş DETAYINDAKİ ürün filtresi ---
+function _urunGecer(u) {
+    if (_urunFiltre === 1) return u.geldi == null;       // Bekleyen
+    if (_urunFiltre === 2) return u.geldi === true;      // Geldi
+    if (_urunFiltre === 3) return u.geldi === false;     // Gelmedi
+    return true;                                         // Tümü
+}
+function urunFiltreSet(f) { _urunFiltre = f; if (_acikFisId != null) fisAc(_acikFisId); }
+function _ozetHtml(fs) {
+    var o = urunGeldiOzet(fs);
+    return '📦 Ürünler: <b style="color:#22c55e">' + o.geldi + ' geldi</b> · <b style="color:#f87171">' + o.gelmedi +
+           ' gelmedi</b> · <b style="color:#94a3b8">' + o.bek + ' bekliyor</b>';
+}
+// Tek ürünün gelme bölümünü YERİNDE tazele — tüm fişi yeniden ÇİZME.
+// ŞART: eskiden her "Geldi" dokunuşu fisAc() çağırıyordu; o da fişi tüm fotoğraflarıyla baştan
+// çizip SAYFAYI EN ÜSTE atıyordu → 69 ürünlük siparişte mal sayarken kullanılamıyordu.
+function _urunKartTazele(fisId, j) {
+    var fs = fisBul(fisId); if (!fs) return false;
+    var u = fs.urunler[j]; if (!u) return false;
+    var box = document.getElementById('ug-' + j); if (!box) return false;
+    var gd = urunGeldiDurum(u);
+    box.innerHTML = '<span class="ug-durum" style="color:' + gd.renk + '">' + gd.ikon + ' ' + gd.ad + '</span>' +
+        '<div class="ug-ctrl">' +
+        '<button class="ug-btn tam' + (u.geldi === true ? ' on' : '') + '" onclick="urunGeldiSet(' + fs.id + ',' + j + ',true)">✓ Geldi</button>' +
+        '<button class="ug-btn yok' + (u.geldi === false ? ' on' : '') + '" onclick="urunGeldiSet(' + fs.id + ',' + j + ',false)">✗ Gelmedi</button>' +
+        '</div>';
+    var oz = document.getElementById('urunOzet'); if (oz) oz.innerHTML = _ozetHtml(fs);
+    // Filtre açıkken işaretlenen ürün artık o filtreye uymuyorsa listeden çekilsin
+    var w = document.getElementById('uw-' + j);
+    if (w && !_urunGecer(u)) w.style.display = 'none';
+    return true;
+}
+function _takipYenile(fisId, j) {
+    var det = document.getElementById('fisDetay');
+    var acik = det && det.style.display !== 'none' && String(_acikFisId) === String(fisId);
+    if (acik && _urunKartTazele(fisId, j)) return;   // yerinde tazelendi → kaydırma konumu KORUNUR
+    fisAc(fisId);
+}
 // deger: true=geldi, false=gelmedi; aynı düğmeye tekrar basınca Bekliyor'a döner
-function urunGeldiSet(fisId, j, deger) { var fs = fisBul(fisId); if (!fs || !fs.urunler[j]) return; var u = fs.urunler[j]; u.geldi = (u.geldi === deger) ? null : deger; fislerKaydet(); _takipYenile(fisId); }
+function urunGeldiSet(fisId, j, deger) { var fs = fisBul(fisId); if (!fs || !fs.urunler[j]) return; var u = fs.urunler[j]; u.geldi = (u.geldi === deger) ? null : deger; fislerKaydet(); _takipYenile(fisId, j); }
 function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     var adet = u.adet || 0;
     var lineYuan = (u.fiyat || 0) * adet;
@@ -944,14 +989,16 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     s += '<div class="satis-row"><span>Satış birim <b>₺' + f(h.ortGuclu) + '</b></span><span>' + (adet > 0 ? 'Toplam <b>₺' + f(satisToplam) + '</b>' : '') + '</span></div>';
     if (fisId != null) {
         var _gd = urunGeldiDurum(u);
-        s += '<div class="urun-geldi"><span class="ug-durum" style="color:' + _gd.renk + '">' + _gd.ikon + ' ' + _gd.ad + '</span>' +
+        // id="ug-N": _urunKartTazele bu bölümü YERİNDE günceller (tüm fişi yeniden çizmemek için)
+        s += '<div class="urun-geldi" id="ug-' + i + '"><span class="ug-durum" style="color:' + _gd.renk + '">' + _gd.ikon + ' ' + _gd.ad + '</span>' +
             '<div class="ug-ctrl">' +
             '<button class="ug-btn tam' + (u.geldi === true ? ' on' : '') + '" onclick="urunGeldiSet(' + fisId + ',' + i + ',true)">✓ Geldi</button>' +
             '<button class="ug-btn yok' + (u.geldi === false ? ' on' : '') + '" onclick="urunGeldiSet(' + fisId + ',' + i + ',false)">✗ Gelmedi</button>' +
             '</div></div>';
     }
     s += '</div>';
-    if (silOnclick) return '<div class="swipe-wrap">' +
+    // id="uw-N": filtre açıkken işaretlenen ürünü listeden çekmek için dış sarmalayıcı
+    if (silOnclick) return '<div class="swipe-wrap"' + (fisId != null ? ' id="uw-' + i + '"' : '') + '>' +
         (fisId != null ? '<div class="swipe-actions"><div class="swipe-act geldi" onclick="urunGeldiSet(' + fisId + ',' + i + ',true)"><span class="ico">🟢</span>Geldi</div></div>' : '') +
         '<div class="swipe-sil" onclick="' + silOnclick + '"><span class="ico">🗑️</span>Sil</div><div class="swipe-ic">' + s + '</div></div>';
     return s;
@@ -1074,6 +1121,32 @@ function varisMetni(fs) {  // {t, renk} veya null ; "geldi" ise geri sayım yok
 }
 function fisDurumSet(id, d) { var fs = fisBul(id); if (!fs) return; fs.durum = d; fislerKaydet(); tabRozetGuncelle(); fisAc(id); }
 function fisFiltreSet(f) { _siparisFiltre = f; fislerRender(); }
+// Sipariş "tamam" sayılır: ürünü var VE hepsi "geldi" işaretli.
+// Yarısı geldi/yarısı gelmedi olan sipariş TAMAM DEĞİLDİR — eksik mal hâlâ eksiktir.
+function _fisTamamMi(fs) {
+    var n = (fs && fs.urunler) ? fs.urunler.length : 0;
+    if (!n) return false;
+    return urunGeldiOzet(fs).geldi === n;
+}
+function _fisFiltreGecer(fs) {
+    if (_siparisFiltre === 1) return !_fisTamamMi(fs);   // Eksik var
+    if (_siparisFiltre === 2) return _fisTamamMi(fs);    // Tamam
+    return true;                                         // Tümü
+}
+// Sipariş kartındaki gelme çubuğu — listeye bakınca hangi siparişin ne kadar sayıldığı görünsün.
+// (Bu bilgi eskiden SADECE siparişi açınca görünüyordu.)
+function _gelenBarHtml(fs) {
+    var n = (fs && fs.urunler) ? fs.urunler.length : 0;
+    if (!n) return '';
+    var o = urunGeldiOzet(fs);
+    var gY = Math.round(o.geldi / n * 100), yY = Math.round(o.gelmedi / n * 100);
+    var s = '<div class="fis-gelen"><span class="say">📦 <b>' + o.geldi + '</b>/' + n + '</span>' +
+            '<span class="fis-bar"><i class="g" style="width:' + gY + '%"></i><i class="y" style="width:' + yY + '%"></i></span>';
+    if (o.geldi === n) s += '<span class="tamam">✅ tamam</span>';
+    else if (o.gelmedi) s += '<span class="eksik">❌ ' + o.gelmedi + ' gelmedi</span>';
+    else s += '<span class="say">' + o.bek + ' bekliyor</span>';
+    return s + '</div>';
+}
 
 function fislerRender() {
     var el = document.getElementById('fislerList');
@@ -1081,13 +1154,17 @@ function fislerRender() {
         el.innerHTML = '<div class="empty"><div class="ico">📋</div><p>Henüz kayıtlı sipariş yok.<br>Fiş sekmesinden kaydet.</p></div>';
         return;
     }
-    _siparisFiltre = 0;   // Siparişler listesinde durum filtresi yok; gelenler alt sekmede takip ediliyor
+    // Filtre çubuğu — "Gelenler" sekmesinin yerine geçen bölüm: hangi siparişte eksik var?
+    var fb = '<div class="filtre-bar">' +
+        '<button class="fbtn' + (_siparisFiltre === 0 ? ' aktif' : '') + '" onclick="fisFiltreSet(0)">Tümü</button>' +
+        '<button class="fbtn' + (_siparisFiltre === 1 ? ' aktif' : '') + '" onclick="fisFiltreSet(1)">⏳ Eksik var</button>' +
+        '<button class="fbtn' + (_siparisFiltre === 2 ? ' aktif' : '') + '" onclick="fisFiltreSet(2)">✅ Tamam</button>' +
+    '</div>';
     var html = '';
     var gY = 0, gU = 0, gCesit = 0, gAdet = 0, gKg = 0, gosterilen = 0;
     for (var i = fisler.length - 1; i >= 0; i--) {
         var fs = fisler[i], dd = fs.durum || 0;
-        if (_siparisFiltre === 1 && dd === 2) continue;
-        if (_siparisFiltre === 2 && dd !== 2) continue;
+        if (!_fisFiltreGecer(fs)) continue;
         gosterilen++;
         var fy = fisYuan(fs.urunler);
         gY += fy; gU += yuanUsd(fy, fs.kurlar || {});
@@ -1100,26 +1177,31 @@ function fislerRender() {
         html += '<div class="fis-ust"><span class="fis-ad">🧾 ' + escapeHtml(fs.ad) + ' <span class="durum-rozet" style="background:' + du.renk + '22;color:' + du.renk + '">' + du.ikon + ' ' + du.kisa + '</span></span><span class="fis-tarih">' + fs.tarih + (fs.sure ? ' · ⏳' + fs.sure + 'g' : '') + '</span></div>';
         html += '<div class="fis-alt"><span class="adet">' + fs.urunler.length + ' çeşit · ' + toplamAdet(fs.urunler) + ' adet · ' + kgStr(toplamKg(fs.urunler)) + ' kg</span><span class="fis-toplam">' + yuanUsdStr(fy, fs.kurlar || {}) + '</span></div>';
         if (vm) html += '<div class="fis-varis" style="color:' + vm.renk + '">' + vm.t + '</div>';
+        html += _gelenBarHtml(fs);
         html += '</div></div></div>';
     }
-    if (gosterilen === 0) { el.innerHTML = '<div class="empty"><div class="ico">🔍</div><p>Sipariş yok.</p></div>'; return; }
-    var bas = _siparisFiltre === 1 ? '💰 Bekleyenler' : (_siparisFiltre === 2 ? '💰 Gelenler' : '💰 Tüm Siparişler');
+    if (gosterilen === 0) {
+        var _bosMsg = _siparisFiltre === 1 ? 'Eksiği olan sipariş yok — hepsi tamam 🎉'
+                    : (_siparisFiltre === 2 ? 'Tamamlanmış sipariş yok.' : 'Sipariş yok.');
+        el.innerHTML = fb + '<div class="empty"><div class="ico">🔍</div><p>' + _bosMsg + '</p></div>';
+        return;
+    }
+    var bas = _siparisFiltre === 1 ? '💰 Eksiği Olanlar' : (_siparisFiltre === 2 ? '💰 Tamamlananlar' : '💰 Tüm Siparişler');
     html += '<div class="toplam5">' +
         '<div class="t5-info">📦 ' + gCesit + ' çeşit · ' + gAdet + ' adet · ' + kgStr(gKg) + ' kg</div>' +
         '<div class="r1"><span class="l1">' + bas + '</span><span class="v1">¥' + f(gY) + '<span class="usd" style="color:#a5b4fc">· $' + f(gU) + '</span></span></div>' +
         '<div class="r2"><span class="l2">+ %5 dahil</span><span class="v2">¥' + f(gY * 1.05) + '<span class="usd" style="color:#fde68a">· $' + f(gU * 1.05) + '</span></span></div>' +
         nakliyeSatiri(gKg, getKurlar()) +
     '</div>';
-    el.innerHTML = html;
+    el.innerHTML = fb + html;
     swipeKur();
 }
-// Siparişler listesindeki görünüm sırası (en yeni üstte) = id dizisi
+// Siparişler listesindeki görünüm sırası (en yeni üstte) = id dizisi.
+// Detaydaki ◀ ▶ gezinmesi de bunu kullanır → liste filtresiyle DAİMA aynı kümede kalır.
 function fisSiraliIdler() {
     var ids = [];
     for (var i = fisler.length - 1; i >= 0; i--) {
-        var dd = fisler[i].durum || 0;
-        if (_siparisFiltre === 1 && dd === 2) continue;
-        if (_siparisFiltre === 2 && dd !== 2) continue;
+        if (!_fisFiltreGecer(fisler[i])) continue;
         ids.push(fisler[i].id);
     }
     return ids;
@@ -1153,9 +1235,27 @@ function fisAc(id) {
     if (_vm) html += '<div class="varis-not" style="color:' + _vm.renk + '">' + _vm.t + '</div>';
     if (fs.kartFoto) html += '<div class="fis-kart"><img src="' + fs.kartFoto + '" onclick="fotoBuyutEl(this)"><button class="fis-kart-degistir" onclick="fisKartDegistir(' + fs.id + ')">✏️ Kartı değiştir</button></div>';
     else html += '<button class="fis-kart-ekle" onclick="fisKartDegistir(' + fs.id + ')">📇 Firma Kartı Resmi Ekle</button>';
-    var _oz = urunGeldiOzet(fs);
-    html += '<div class="urun-ozet">📦 Ürünler: <b style="color:#22c55e">' + _oz.geldi + ' geldi</b> · <b style="color:#f87171">' + _oz.gelmedi + ' gelmedi</b> · <b style="color:#94a3b8">' + _oz.bek + ' bekliyor</b></div>';
-    for (var j = 0; j < fs.urunler.length; j++) html += urunKartHtml(fs.urunler[j], j, k, false, 'fisUrunSil(' + fs.id + ',' + j + ')', fs.id);
+    html += '<div class="urun-ozet" id="urunOzet">' + _ozetHtml(fs) + '</div>';
+    // Ürün filtresi — mal sayarken "sadece bekleyenleri göster" işi görsün diye.
+    html += '<div class="filtre-bar urun-filtre">' +
+        '<button class="fbtn' + (_urunFiltre === 0 ? ' aktif' : '') + '" onclick="urunFiltreSet(0)">Tümü</button>' +
+        '<button class="fbtn' + (_urunFiltre === 1 ? ' aktif' : '') + '" onclick="urunFiltreSet(1)">⏳ Bekleyen</button>' +
+        '<button class="fbtn' + (_urunFiltre === 2 ? ' aktif' : '') + '" onclick="urunFiltreSet(2)">🟢 Geldi</button>' +
+        '<button class="fbtn' + (_urunFiltre === 3 ? ' aktif' : '') + '" onclick="urunFiltreSet(3)">❌ Gelmedi</button>' +
+    '</div>';
+    // NOT: filtrelenen ürünler ATLANIR ama `j` ORİJİNAL sıradır — urunGeldiSet/fisUrunSil
+    // doğru ürüne gitsin ve kart üstündeki numara gerçek sırayı göstersin diye.
+    var _gosterilen = 0;
+    for (var j = 0; j < fs.urunler.length; j++) {
+        if (!_urunGecer(fs.urunler[j])) continue;
+        _gosterilen++;
+        html += urunKartHtml(fs.urunler[j], j, k, false, 'fisUrunSil(' + fs.id + ',' + j + ')', fs.id);
+    }
+    if (_gosterilen === 0) html += '<div class="filtre-bos">' +
+        (_urunFiltre === 1 ? 'Bekleyen ürün yok — hepsi işaretlendi 🎉'
+         : _urunFiltre === 2 ? 'Gelen ürün yok.'
+         : _urunFiltre === 3 ? 'Gelmeyen ürün yok 🎉' : 'Ürün yok.') + '</div>';
+    // Toplamlar DAİMA fişin tamamına göre — filtre para rakamlarını değiştirmemeli
     html += '<div class="toplam5">' + toplam5Rows(fs.urunler, k, '💰 Fiş Toplamı') + '</div>';
     html += '<div class="paylas-row"><button class="btn-pdf" onclick="fisPdf(' + fs.id + ')">📄 PDF</button><button class="btn-wa" onclick="fisWhatsapp(' + fs.id + ')">💬 WhatsApp</button></div>';
     html += '<button class="btn-fisekle" onclick="fiseUrunEkleBasla(' + fs.id + ')">➕ Bu Fişe Ürün Ekle</button>';
@@ -1350,69 +1450,16 @@ function swipeKur() {
 }
 
 /* ---------- Sekmeler ---------- */
-/* ---------- Gelenler (tedarikçi bazlı ürün takibi) ---------- */
-function gelenlerFiltre(f) { _gelenlerFiltre = f; gelenlerRender(); }
-function urunTakipKart(fisId, j, u) {
-    var gd = urunGeldiDurum(u);
-    var s = '<div class="takip-kart">';
-    s += (u.img ? '<img class="takip-foto" src="' + u.img + '" data-fis="' + fisId + '" data-j="' + j + '" onclick="fotoBuyutEl(this)">' : '<div class="takip-foto no">🖼️</div>');
-    s += '<div class="takip-info"><div class="takip-ust"><b>' + u.gram + 'g · ' + u.fiyat + '¥</b></div>' +
-        '<div class="ug-durum" style="color:' + gd.renk + '">' + gd.ikon + ' ' + gd.ad + '</div></div>';
-    s += '<div class="ug-ctrl">' +
-        '<button class="ug-btn tam' + (u.geldi === true ? ' on' : '') + '" onclick="urunGeldiSet(' + fisId + ',' + j + ',true)">✓ Geldi</button>' +
-        '<button class="ug-btn yok' + (u.geldi === false ? ' on' : '') + '" onclick="urunGeldiSet(' + fisId + ',' + j + ',false)">✗ Yok</button>' +
-        '</div></div>';
-    return s;
-}
-function gelenlerRender() {
-    var el = document.getElementById('gelenlerList');
-    var fb = '<div class="filtre-bar">' +
-        '<button class="fbtn' + (_gelenlerFiltre === 0 ? ' aktif' : '') + '" onclick="gelenlerFiltre(0)">⏳ Bekleyen</button>' +
-        '<button class="fbtn' + (_gelenlerFiltre === 1 ? ' aktif' : '') + '" onclick="gelenlerFiltre(1)">🟢 Gelen</button>' +
-        '<button class="fbtn' + (_gelenlerFiltre === 2 ? ' aktif' : '') + '" onclick="gelenlerFiltre(2)">❌ Gelmedi</button>' +
-        '<button class="fbtn' + (_gelenlerFiltre === 3 ? ' aktif' : '') + '" onclick="gelenlerFiltre(3)">Tümü</button>' +
-    '</div>';
-    var gruplar = {}, sira = [];
-    for (var i = 0; i < fisler.length; i++) {
-        var fs = fisler[i];
-        for (var j = 0; j < (fs.urunler || []).length; j++) {
-            var u = fs.urunler[j];
-            if (_gelenlerFiltre === 0 && u.geldi != null) continue;
-            if (_gelenlerFiltre === 1 && u.geldi !== true) continue;
-            if (_gelenlerFiltre === 2 && u.geldi !== false) continue;
-            var ad = fs.ad || '—';
-            if (!gruplar[ad]) { gruplar[ad] = []; sira.push(ad); }
-            gruplar[ad].push({ fisId: fs.id, j: j, u: u });
-        }
-    }
-    if (sira.length === 0) {
-        var bos = _gelenlerFiltre === 1 ? 'Henüz gelen ürün yok.' : (_gelenlerFiltre === 0 ? 'Bekleyen ürün yok — hepsi işaretlendi 🎉' : (_gelenlerFiltre === 2 ? 'Gelmeyen ürün yok 🎉' : 'Ürün yok.'));
-        el.innerHTML = fb + '<div class="empty"><div class="ico">📦</div><p>' + bos + '</p></div>';
-        return;
-    }
-    var html = '';
-    sira.forEach(function (ad) {
-        var liste = gruplar[ad];
-        html += '<div class="ted-grup"><div class="ted-bas">🏢 ' + escapeHtml(ad) + ' <span class="ted-say">' + liste.length + ' ürün</span></div>';
-        liste.forEach(function (x) { html += urunTakipKart(x.fisId, x.j, x.u); });
-        html += '</div>';
-    });
-    el.innerHTML = fb + html;
-}
-
 /* ---------- Sekmeler ---------- */
 function tabGoster(t) {
     document.getElementById('view-urun').style.display = (t === 'urun') ? 'block' : 'none';
     document.getElementById('view-fis').style.display = (t === 'fis') ? 'block' : 'none';
     document.getElementById('view-siparisler').style.display = (t === 'siparisler') ? 'block' : 'none';
-    document.getElementById('view-gelenler').style.display = (t === 'gelenler') ? 'block' : 'none';
     document.getElementById('tab-urun').classList.toggle('aktif', t === 'urun');
     document.getElementById('tab-fis').classList.toggle('aktif', t === 'fis');
     document.getElementById('tab-siparisler').classList.toggle('aktif', t === 'siparisler');
-    document.getElementById('tab-gelenler').classList.toggle('aktif', t === 'gelenler');
     if (t === 'fis') renderFis();
     if (t === 'siparisler') fisGeri();
-    if (t === 'gelenler') gelenlerRender();
     window.scrollTo(0, 0);
 }
 function tabRozetGuncelle() {
@@ -1631,9 +1678,7 @@ function _ekranYenile() {
     tabRozetGuncelle();
     var vf = document.getElementById('view-fis');
     var vs = document.getElementById('view-siparisler');
-    var vg = document.getElementById('view-gelenler');
     if (vf && vf.style.display !== 'none') renderFis();
-    if (vg && vg.style.display !== 'none') gelenlerRender();
     if (vs && vs.style.display !== 'none') {
         var det = document.getElementById('fisDetay');
         if (det && det.style.display !== 'none' && _acikFisId != null) {
@@ -2049,7 +2094,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 37');
+    L.push('Sürüm 38');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
