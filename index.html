@@ -332,7 +332,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 36 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 37 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -448,12 +448,50 @@ var DURUMLAR = [
 
 /* ---------- localStorage ---------- */
 var _kurFields = ['rnb','usd','zNak','nNak','sNak'];
+var _kurAdlari = { rnb: 'RMB Kuru', usd: 'USD Kuru', zNak: 'Zirve ($/kg)', nNak: 'Neyma ($/kg)', sNak: 'Serkan ($/kg)' };
+// rnb ve usd SIFIR OLAMAZ: hesapta çarpan/bölen oldukları için 0 girilirse satış fiyatı sessizce
+// %23–%77 yanlış çıkar. Nakliye kurları 0 olabilir (o taşıyıcı kullanılmıyor demektir).
+var _kurSifirOlamaz = { rnb: 1, usd: 1 };
+function _kurGecerliMi(ad, v) {
+    if (v === undefined || v === null || v === '') return false;
+    var n = parseFloat(v);
+    if (isNaN(n) || n < 0) return false;
+    if (_kurSifirOlamaz[ad] && n <= 0) return false;
+    return true;
+}
+// Bir kur alanının GEÇERLİ değeri — TEK KAYNAK.
+// Sıra: alandaki değer → son kayıtlı geçerli değer → alanın fabrika varsayılanı.
+// ŞART: eskiden ekran hesabı (getKurlar) doğrudan alanı okuyup boşu 0 sayıyordu. Alan boşken
+// hesaplanan fiyat yanlış çıkıyor ve fisKaydetOnay bu sıfırı fişin İÇİNE KALICI gömüyordu.
+function _kurGecerli(ad, kayitli) {
+    var el = document.getElementById(ad);
+    var v = el ? el.value : '';
+    if (_kurGecerliMi(ad, v)) return v;
+    if (kayitli === undefined) { try { kayitli = JSON.parse(localStorage.getItem('smh_kurlar')) || {}; } catch (e) { kayitli = {}; } }
+    if (_kurGecerliMi(ad, kayitli[ad])) return kayitli[ad];
+    return el ? el.defaultValue : '';
+}
 function kurKaydet() {
+    // GEÇERSİZ değeri alana geri yaz + ASLA kaydetme. Kaydedersek "son geçerli değeri koru" siperi
+    // kendi kaynağından zehirlenir; alan bir daha kendine gelmez (kapat-aç bile düzeltmez).
+    var duzeltilen = [], kayitli = {};
+    try { kayitli = JSON.parse(localStorage.getItem('smh_kurlar')) || {}; } catch (e) {}
+    for (var i = 0; i < _kurFields.length; i++) {
+        var ad = _kurFields[i], el = document.getElementById(ad);
+        if (!el || _kurGecerliMi(ad, el.value)) continue;
+        var eski = el.value;
+        el.value = _kurGecerli(ad, kayitli);
+        duzeltilen.push('• ' + (_kurAdlari[ad] || ad) + ': ' + (eski === '' ? '(boş)' : eski) + ' → ' + el.value);
+    }
     try {
         var obj = {};
-        for (var i = 0; i < _kurFields.length; i++) obj[_kurFields[i]] = document.getElementById(_kurFields[i]).value;
+        for (var k = 0; k < _kurFields.length; k++) obj[_kurFields[k]] = _kurGecerli(_kurFields[k], kayitli);
         localStorage.setItem('smh_kurlar', JSON.stringify(obj));
     } catch(e) {}
+    if (duzeltilen.length) {
+        alert('⚠️ Kur alanı boş veya geçersiz bırakılamaz.\n\nSon geçerli değer geri yüklendi:\n' + duzeltilen.join('\n') +
+              '\n\nBoş kur ile hesaplansaydı fiyatlar yanlış çıkardı.');
+    }
     onGirisDegis();
     renderFis();
 }
@@ -462,7 +500,11 @@ function kurYukle() {
         var obj = JSON.parse(localStorage.getItem('smh_kurlar'));
         if (!obj) return;
         for (var i = 0; i < _kurFields.length; i++) {
-            if (obj[_kurFields[i]] !== undefined) document.getElementById(_kurFields[i]).value = obj[_kurFields[i]];
+            var ad = _kurFields[i];
+            // ZEHİRLİ eski kayıt: geçersiz değeri alana YAZMA → HTML'deki fabrika varsayılanı kalsın.
+            // (Önceki sürümde boş değer kaydedilebiliyordu; bu satır o kayıtları kendiliğinden iyileştirir.)
+            if (!_kurGecerliMi(ad, obj[ad])) continue;
+            var el = document.getElementById(ad); if (el) el.value = obj[ad];
         }
     } catch(e) {}
 }
@@ -565,15 +607,8 @@ function toggleKur() {
 function kurlarRaw() {
     var o = {}, kayitli = {};
     try { kayitli = JSON.parse(localStorage.getItem('smh_kurlar')) || {}; } catch (e) {}
-    for (var i = 0; i < _kurFields.length; i++) {
-        var ad = _kurFields[i], el = document.getElementById(ad);
-        var v = el ? el.value : '';
-        // BOŞ/geçersiz kur buluta yazılıp TÜM cihazlarda kurları sıfırlamasın → son geçerli değeri koru
-        if (v === '' || isNaN(parseFloat(v))) {
-            v = (kayitli[ad] !== undefined && kayitli[ad] !== '' && !isNaN(parseFloat(kayitli[ad]))) ? kayitli[ad] : (el ? el.defaultValue : '');
-        }
-        o[ad] = v;
-    }
+    // BOŞ/geçersiz kur buluta yazılıp TÜM cihazlarda kurları bozmasın → _kurGecerli son geçerli değeri verir.
+    for (var i = 0; i < _kurFields.length; i++) o[_kurFields[i]] = _kurGecerli(_kurFields[i], kayitli);
     return o;
 }
 function yedekAl() {
@@ -627,7 +662,10 @@ function geriYukle(input) {
         try {
             if (veri.kurlar) {
                 for (var i = 0; i < _kurFields.length; i++) {
-                    if (veri.kurlar[_kurFields[i]] !== undefined) document.getElementById(_kurFields[i]).value = veri.kurlar[_kurFields[i]];
+                    // Yedekteki kur GEÇERSİZ olabilir (eski sürüm boş değer kaydedebiliyordu).
+                    // Doğrulamadan yazarsak alan boşalır ve hesap 0 kurla yapılır → mevcut kuru koru.
+                    if (!_kurGecerliMi(_kurFields[i], veri.kurlar[_kurFields[i]])) continue;
+                    var _el = document.getElementById(_kurFields[i]); if (_el) _el.value = veri.kurlar[_kurFields[i]];
                 }
                 localStorage.setItem('smh_kurlar', JSON.stringify(kurlarRaw()));
             }
@@ -682,8 +720,13 @@ function fotoYuklendi(input) {
         return;
     }
     resizeImage(input.files[0], function(dataUrl) {
-        if (_fotoHedef === -2) { _girisFoto = dataUrl; girisFotoGuncelle(); }
-        else if (_fotoHedef >= 0 && _fotoHedef < urunler.length) { urunler[_fotoHedef].img = dataUrl; urunlerKaydet(); renderFis(); }
+        // ASENKRON: küçültme bitene kadar kullanıcı BAŞKA bir ürünün 📷 düğmesine basmış olabilir;
+        // global _fotoHedef o an değişmiş olur → fotoğraf YANLIŞ ürüne yapışıyordu.
+        // Yukarıdaki kart yolunda `hedef` doğru yakalanmış, bu yolda unutulmuştu.
+        if (hedef === -2) { _girisFoto = dataUrl; girisFotoGuncelle(); }
+        else if (hedef >= 0 && hedef < urunler.length) { urunler[hedef].img = dataUrl; urunlerKaydet(); renderFis(); }
+        // Hedef ürün artık yok (fiş kaydedildi / sepet başka cihazdan küçüldü) → SESSİZCE ATMA, söyle.
+        else if (hedef >= 0) alert('⚠️ Fotoğraf eklenemedi: o ürün artık fişte yok.\n(Fiş kaydedilmiş veya sepet başka cihazda değişmiş olabilir.)');
     });
 }
 function girisFotoGuncelle() {
@@ -751,9 +794,14 @@ function zoomSifirla() { _zoomScale = 1; _zoomX = 0; _zoomY = 0; zoomUygula(); }
 function zoomToggle() { if (_zoomScale > 1) zoomSifirla(); else zoomAyarla(2.5); }
 
 /* ---------- Hesaplama ---------- */
-function pf(id) { return parseFloat(document.getElementById(id).value) || 0; }
+// HESAPTA kullanılan kurlar. Alanı DOĞRUDAN okumaz (eski `pf()` öyle yapıyordu): boş alan 0
+// sayılınca satış fiyatı %23–%77 yanlış çıkıyor ve fisKaydetOnay o sıfırı fişe KALICI gömüyordu.
+// kurlarRaw ile AYNI kaynaktan (_kurGecerli) okur → ekran, kayıt ve bulut hep aynı kuru görür.
 function getKurlar() {
-    return { rnb: pf('rnb'), usd: pf('usd'), zNak: pf('zNak'), nNak: pf('nNak'), sNak: pf('sNak') };
+    var o = {}, kayitli = {};
+    try { kayitli = JSON.parse(localStorage.getItem('smh_kurlar')) || {}; } catch (e) {}
+    for (var i = 0; i < _kurFields.length; i++) o[_kurFields[i]] = parseFloat(_kurGecerli(_kurFields[i], kayitli)) || 0;
+    return o;
 }
 function hesapla(gram, fiyat, gb, k) {
     gb = gb || 1;
@@ -910,6 +958,9 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
 }
 
 function adetDegistir(i, val) {
+    // Sepet arada küçülmüş olabilir (fiş kaydedildi / başka cihaz sildi). Kontrolsüz erişim
+    // TypeError atıyor, adet sessizce kaydedilmiyor ve buluta da hiç gitmiyordu.
+    if (!urunler[i]) { renderFis(); return; }
     var a = parseInt(val) || 0;
     if (a < 0) a = 0;
     urunler[i].adet = a || null;
@@ -917,6 +968,7 @@ function adetDegistir(i, val) {
     renderFis();
 }
 function sil(idx) {
+    if (!urunler[idx]) { renderFis(); return; }   // yoksa "sildim" deyip hiçbir şey silmesin
     if (!confirm('Bu ürün silinsin mi?')) return;
     urunler.splice(idx, 1);
     urunlerKaydet();
@@ -975,6 +1027,9 @@ function fkFotoGuncelle() {
     else w.innerHTML = '<button type="button" class="fk-foto-btn" onclick="fisKartFotoSec()">📷 Kart Resmi Çek</button>';
 }
 function fisKaydetOnay() {
+    // Boş sepet kontrolü SADECE modalı açan fisKaydet'te vardı. Modal açıkken (kart fotoğrafı
+    // çekilirken) sepet boşalırsa BOŞ fiş kaydedilip "✅ Fiş kaydedildi" deniyordu.
+    if (!urunler.length) { alert('⚠️ Fişte ürün yok. Boş sipariş kaydedilemez.'); return; }
     if (!_fisKartFoto) { alert('⚠️ Firma kartı resmi zorunlu. Lütfen kartın fotoğrafını çek.'); return; }
     var sure = parseInt(document.getElementById('fkSure').value);
     if (!sure || sure < 1) { alert('⚠️ Tedarik süresi (gün) zorunlu. Kaç günde geleceğini gir.'); return; }
@@ -1994,7 +2049,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 36');
+    L.push('Sürüm 37');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
@@ -2002,6 +2057,13 @@ function baglantiTesti() {
     L.push('Dinleyici (fbRef): ' + (_fbRef ? 'BAĞLI ✅' : '❌ BAĞLI DEĞİL'));
     L.push('Service worker: ' + (('serviceWorker' in navigator) ? (navigator.serviceWorker.controller ? 'aktif ✅' : '⚠️ kontrolsüz') : 'yok'));
     L.push('Yerel: ' + fisler.length + ' sipariş, ' + urunler.length + ' fiş ürünü');
+    // Hesapta GERÇEKTEN kullanılan kurlar — boş alan yüzünden yanlış fiyat çıkıp çıkmadığı buradan görülür
+    try {
+        var _gk = getKurlar();
+        L.push('Kurlar (hesapta kullanılan): RMB ' + _gk.rnb + ' · USD ' + _gk.usd + ' · Z ' + _gk.zNak + ' · N ' + _gk.nNak + ' · S ' + _gk.sNak);
+        var _bos = _kurFields.filter(function (a) { var e = document.getElementById(a); return !e || !_kurGecerliMi(a, e.value); });
+        if (_bos.length) L.push('⚠️ BOŞ/geçersiz kur alanı: ' + _bos.map(function (a) { return _kurAdlari[a] || a; }).join(', '));
+    } catch (e) {}
     L.push('Bulut aynası: ' + Object.keys(_cloudJson).length + ' sipariş');
     L.push('Ortak ata: ' + Object.keys(_lastFisMap).length + ' kayıt');
     L.push('Bekleyen SİLME: ' + Object.keys(_silinen).length + (Object.keys(_silinen).length ? ' ⏳' : ' ✅'));
