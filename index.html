@@ -335,7 +335,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 39 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 40 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -651,6 +651,7 @@ function yedekBirlestir(input) {
         fislerKaydet();
         renderFis(); tabRozetGuncelle();
         alert('🔀 Birleştirildi.\n\n✅ ' + eklendi + ' yeni sipariş eklendi.' + (atlandi ? '\n' + atlandi + ' sipariş zaten vardı (atlandı).' : '') + '\n\nToplam: ' + fisler.length + ' sipariş.');
+        _siparisFiltre = 0;   // yedekten gelenler filtreye takılıp görünmez kalmasın
         tabGoster('siparisler');
         input.value = '';
     };
@@ -1102,6 +1103,9 @@ function fisKaydetOnay() {
     _fisKartFoto = null;
     document.getElementById('fisKaydetModal').classList.remove('acik');
     alert('✅ Fiş kaydedildi: ' + ad + '\n\nYeni fişe başlayabilirsin.');
+    // YENİ siparişin tüm ürünleri "bekliyor" → "✅ Tamam" filtresi açık kaldıysa listede HİÇ
+    // görünmezdi ve kullanıcı siparişi kaybolmuş sanardı. Yeni kayıtta filtreyi aç.
+    _siparisFiltre = 0;
     tabGoster('siparisler');
 }
 
@@ -1139,7 +1143,10 @@ function _gelenBarHtml(fs) {
     var n = (fs && fs.urunler) ? fs.urunler.length : 0;
     if (!n) return '';
     var o = urunGeldiOzet(fs);
-    var gY = Math.round(o.geldi / n * 100), yY = Math.round(o.gelmedi / n * 100);
+    // Her iki oran da ,5 ile bitiyorsa ikisi de yukarı yuvarlanıp toplam %101 olabiliyordu
+    // (ör. 8 üründe 1 geldi + 7 gelmedi → 13 + 88). Çubuk taşınca kırmızı dilim kırpılıyordu.
+    var gY = Math.round(o.geldi / n * 100);
+    var yY = Math.min(Math.round(o.gelmedi / n * 100), 100 - gY);
     var s = '<div class="fis-gelen"><span class="say">📦 <b>' + o.geldi + '</b>/' + n + '</span>' +
             '<span class="fis-bar"><i class="g" style="width:' + gY + '%"></i><i class="y" style="width:' + yY + '%"></i></span>';
     if (o.geldi === n) s += '<span class="tamam">✅ tamam</span>';
@@ -1224,7 +1231,10 @@ function fisAc(id) {
     var _ids = fisSiraliIdler(), _pos = _ids.indexOf(id);
     var html = '';
     html += '<div class="fis-nav"><button class="btn-geri" onclick="fisGeri()">‹ Siparişler</button>';
-    if (_ids.length > 1) html += '<div class="fis-gez"><button class="gez-ok" ' + (_pos <= 0 ? 'disabled' : '') + ' onclick="fisKaydirGec(-1)">◀</button><span class="gez-say">' + (_pos + 1) + ' / ' + _ids.length + '</span><button class="gez-ok" ' + (_pos >= _ids.length - 1 ? 'disabled' : '') + ' onclick="fisKaydirGec(1)">▶</button></div>';
+    // _pos < 0 = açık sipariş, AKTİF FİLTRENİN dışında kalmış (ör. "Eksik var" filtresindeyken
+    // son ürününü de "geldi" işaretledin → sipariş artık "Tamam"). Eskiden bu durumda "0 / N"
+    // yazıyor ve ▶ etkin görünüp hiçbir şey yapmıyordu. Gezinilecek tutarlı bir küme yok → oku gizle.
+    if (_ids.length > 1 && _pos >= 0) html += '<div class="fis-gez"><button class="gez-ok" ' + (_pos <= 0 ? 'disabled' : '') + ' onclick="fisKaydirGec(-1)">◀</button><span class="gez-say">' + (_pos + 1) + ' / ' + _ids.length + '</span><button class="gez-ok" ' + (_pos >= _ids.length - 1 ? 'disabled' : '') + ' onclick="fisKaydirGec(1)">▶</button></div>';
     html += '</div>';
     html += '<div class="fis-baslik"><h2>🧾 ' + escapeHtml(fs.ad) + ' <button class="btn-adduzenle" onclick="fisAdDuzenle(' + fs.id + ')">✏️</button></h2><small>' + fs.tarih + ' · ' + fs.urunler.length + ' ürün</small></div>';
     html += '<div class="fis-sure">⏳ Tedarik süresi: <b>' + (fs.sure ? fs.sure + ' gün' : 'girilmemiş') + '</b> <button class="btn-adduzenle" onclick="fisSureDuzenle(' + fs.id + ')">✏️</button></div>';
@@ -2094,7 +2104,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 39');
+    L.push('Sürüm 40');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
