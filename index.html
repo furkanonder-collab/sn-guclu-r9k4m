@@ -335,7 +335,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 40 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 41 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -567,6 +567,48 @@ function urunlerKaydet() {
 function fislerKaydet() {
     dbSet('fisler', fisler).catch(function() { alert('Kaydetme sırasında bir sorun oldu. Yedek almanız önerilir.'); });
 }
+/* ---------- SEPET ÜRÜN KİMLİĞİ (uid) — meta birleştirmesinin temeli ----------
+   Sepet ürünleri sıra numarasıyla yönetiliyordu. Kimlik olmadan "A cihazı 3. sıraya ekledi" ile
+   "B cihazı 3. sıradakini sildi" ayırt EDİLEMEZ; sıra tabanlı birleştirme yanlış ürünü siler. */
+// Yeni ürün: zaman + rastgele. 'b' öneki → uid'e göre sıralanınca oluşturma sırası korunur.
+var _uidSayac = 0;
+function _yeniUid() {
+    var r = '';
+    for (var i = 0; i < 6; i++) r += '0123456789abcdefghijklmnopqrstuvwxyz'.charAt(Math.floor(Math.random() * 36));
+    return 'b' + Date.now().toString(36) + '-' + r + '-' + (_uidSayac++);
+}
+// GÖÇ: uid'siz eski ürünlere kimlik ver. BELİRLEYİCİ olmalı — iki cihaz aynı ürüne AYNI uid
+// vermezse birleştirme onları iki ayrı ürün sanıp İKİZLER.
+// Sıra numarası KULLANILAMAZ: iki cihazın sepeti farklıysa aynı ürün farklı sıradadır.
+// Bu yüzden içerik + "aynısından kaçıncısı" kullanılır → sıra değişse de kimlik aynı kalır,
+// meşru olarak iki kez sipariş edilen aynı ürün ise ayrı kalır (-0, -1, ...).
+function _gocUid(u, sayac) {
+    var anahtar = String(u && u.gram) + '_' + String(u && u.fiyat) + '_' + String((u && u.gb) || 1);
+    var n = sayac[anahtar] = (sayac[anahtar] || 0) + 1;
+    return 'a-' + anahtar + '-' + (n - 1);
+}
+// Bir ürün listesindeki EKSİK uid'leri tamamla. DİZİYİ yerinde günceller, uid'i olanlara dokunmaz.
+// SADECE sepet listeleri için — `fisler` DÖNGÜSÜNE ASLA GİRMEZ (yoksa 29 siparişin tamamı
+// "değişmiş" görünüp buluta yeniden yüklenir).
+function _uidGarantile(liste) {
+    if (!Array.isArray(liste)) return liste;
+    var sayac = {}, gorulen = {};
+    for (var i = 0; i < liste.length; i++) {
+        var u = liste[i]; if (!u || typeof u !== 'object') continue;
+        if (!u.uid || gorulen[u.uid]) {
+            // Eksik VEYA çakışan → üret. Üretilen de çakışırsa sayaç ilerlediği için bir sonraki
+            // deneme farklı gelir; yine de sonsuz döngüye karşı üst sınır koy.
+            var y = null;
+            for (var d = 0; d < 50; d++) { y = _gocUid(u, sayac); if (!gorulen[y]) break; }
+            u.uid = y || _yeniUid();
+        } else {
+            var a = String(u.gram) + '_' + String(u.fiyat) + '_' + String(u.gb || 1);
+            sayac[a] = (sayac[a] || 0) + 1;   // mevcut uid'ler de sayılmalı, yoksa göç uid'leri çakışır
+        }
+        gorulen[u.uid] = 1;
+    }
+    return liste;
+}
 // Başlangıçta veriyi yükle; IndexedDB boşsa eski localStorage verisini (silmeden) taşı
 // Fiş id'lerini düzelt: sayıya çevir + id'siz olana benzersiz id ata (yoksa senkronsuz kalır / karşılaştırmalar bozulur)
 function _fisIdDuzelt() {
@@ -675,9 +717,12 @@ function geriYukle(input) {
                 }
                 localStorage.setItem('smh_kurlar', JSON.stringify(kurlarRaw()));
             }
-            urunler = Array.isArray(veri.urunler) ? veri.urunler : [];
+            urunler = _uidGarantile(Array.isArray(veri.urunler) ? veri.urunler : []);
             fisler = Array.isArray(veri.fisler) ? veri.fisler : [];
             _fisIdDuzelt();
+            // Yedek geri yükleme = "bu cihazın hâli artık BU". Ortak atayı geçersiz kıl ki
+            // buluttan gelen ESKİ meta, geri yüklediğin sepeti/kurları ezmesin.
+            _metaAta = null; try { dbSet('metaAta', null).catch(function () {}); } catch (e) {}
             urunlerKaydet(); fislerKaydet();
             onGirisDegis(); renderFis(); tabRozetGuncelle();
             alert('✅ Yedek geri yüklendi.\n' + fisler.length + ' kayıtlı sipariş, ' + urunler.length + ' fiş ürünü.');
@@ -897,7 +942,11 @@ function siparisVer() {
         }
         fs.urunler.push(yeni); fs.toplam = fisYuan(fs.urunler); fislerKaydet();
     } else {
-        // Normal sepet
+        // Normal sepet — SADECE burada uid verilir. Kayıtlı fişe eklenen ürüne (yukarıdaki dal)
+        // uid VERİLMEZ: fişlerin kanonik json'u değişirse 29 siparişin tamamı "değişmiş" görünüp
+        // buluta yeniden yüklenir (~29 MB). Sepetten fişe geçen ürünler uid'i beraberinde taşır,
+        // bu sorun değil — o fiş zaten yeni/kirli.
+        yeni.uid = _yeniUid();
         urunler.push(yeni);
         urunlerKaydet();
         renderFis();
@@ -1480,6 +1529,8 @@ function tabRozetGuncelle() {
 // Veri IndexedDB'den (ilk açılışta localStorage'dan taşınarak) yüklenince ekranı çiz
 verileriYukle().then(function() {
     _fisIdDuzelt();
+    // SEPETE kimlik ver (meta birleştirmesi için şart). `fisler`e DOKUNMAZ → toplu yeniden yükleme yok.
+    try { _uidGarantile(urunler); } catch (e) {}
     return _senkronDurumYukle();          // kalıcı ortak ata + bekleyen silme emirleri
 }).then(function() {
     try { renderFis(); tabRozetGuncelle(); } catch (e) {}
@@ -1646,12 +1697,21 @@ var _cloudJson = {}, _lastFisMap = {}, _rebuildTimer = null, _retryCount = 0, _p
 // _lastFisMap  : id -> buluttan DOĞRULANMIŞ son json — 3 yönlü birleştirmenin "ortak ata"sı
 // _silinen     : id -> 1  → yerelde silindi, buluttan kaldırılması HENÜZ onaylanmadı (mezar taşı)
 // _oncekiIdler : son kayıttaki id kümesi — hangi fişin silindiğini anlamak için
-var _silinen = {}, _oncekiIdler = null, _bekleyenMeta = null, _ilkYukleme = false, _lastMetaJson = null;
+var _silinen = {}, _oncekiIdler = null, _bekleyenMeta = null, _ilkYukleme = false;
 var _gonderimAktif = false, _tekrarGerekli = false;
+// _metaAta : SEPET + KURLAR için kalıcı ortak ata (IndexedDB `metaAta`). Fişlerdeki _lastFisMap'in
+//            karşılığı. Bu OLMADAN buluttan gelen meta koşulsuz uygulanıyor ve çevrimdışı yaptığın
+//            sepet/kur değişikliği SESSİZCE siliniyordu.
+// _metaBulutGoruldu : bu oturumda buluttaki meta'yı EN AZ BİR KEZ gördük mü? Görmeden yazmak,
+//            bağlanma anında ters yönde ezmeye yol açar (bizim eski sepetimiz karşıyı ezer).
+var _metaAta = null, _metaBulutGoruldu = false;
 function _senkronDurumKaydet() {
     try { dbSet('sonSenkron', _lastFisMap).catch(function () {}); } catch (e) {}
     try { dbSet('silinen', _silinen).catch(function () {}); } catch (e) {}
 }
+// AYRI tutuluyor: _senkronDurumKaydet her yerel kayıtta çalışan SICAK yol. _metaAta yalnızca
+// gerçekten değiştiğinde (başarılı meta yazımı / birleştirme sonu) diske yazılır.
+function _metaAtaKaydet() { try { dbSet('metaAta', _metaAta).catch(function () {}); } catch (e) {} }
 // Karşılaştırma için KANONİK json: anahtarlar sıralı, undefined atılır.
 // Şart: Firebase'den gelen nesnenin anahtar sırası yereldekinden farklı olabilir; düz
 // JSON.stringify ile karşılaştırınca aynı veri "değişmiş" görünüp sonsuz yeniden yükleme olur.
@@ -1662,10 +1722,58 @@ function _kanonikJson(v) {
     return '{' + ks.map(function (k) { return JSON.stringify(k) + ':' + _kanonikJson(v[k]); }).join(',') + '}';
 }
 function _senkronDurumYukle() {
-    return Promise.all([dbGet('sonSenkron'), dbGet('silinen')]).then(function (r) {
+    return Promise.all([dbGet('sonSenkron'), dbGet('silinen'), dbGet('metaAta')]).then(function (r) {
         if (r[0] && typeof r[0] === 'object') _lastFisMap = r[0];
         if (r[1] && typeof r[1] === 'object') _silinen = r[1];
+        // SÜRÜM DAMGASI — v35 tuzağının panzehiri. Ata'nın biçimi ileride değişirse diskteki
+        // eski biçim SONSUZA KADAR uyuşmaz ve kalıcı "Gönderilmeyi bekliyor" + yazma döngüsü olur.
+        // Uyuşmayan sürüm SAKLANMAZ, atılır: ata yok sayılır, ilk birleştirmede güvenle yeniden kurulur.
+        var a = r[2];
+        _metaAta = (a && typeof a === 'object' && a.v === META_ATA_SURUM && Array.isArray(a.urunler)) ? a : null;
     }).catch(function () {});
+}
+
+/* ================= META (SEPET + KURLAR) 3 YÖNLÜ BİRLEŞTİRME =================
+   Fişlerde çalışan desenin aynısı. Ata METİN değil, PARMAK İZİ NESNESİ olarak saklanır:
+     • kurlar için ALAN BAZLI karar gerekiyor (tek bir hash yetmez)
+     • sepetteki fotoğrafları diske İKİNCİ kez yazmamak için (resim yerine izi tutulur)   */
+var META_ATA_SURUM = 1;   // _urunIz/_ataUret çıktısı DEĞİŞİRSE bu sayıyı artır
+// Fotoğraf izi: tüm diziyi taramadan ~64 noktadan örnekle + uzunluk.
+// NOT: ilk 16 karakter HER jpeg'de aynıdır ("data:image/jpeg;"), oradan iz çıkarılmaz.
+// Fotoğrafın TAM izi — her karakter taranır.
+// Önce "hızlı olsun" diye ~64 noktadan örnekliyordum: ÖLÇTÜM, 320 tek-karakter denemesinin
+// 319'unu KAÇIRIYORDU (39 KB'lık bir resimde 64 nokta hiçbir şey görmüyor) → değişen fotoğraf
+// buluta hiç gitmezdi. Tam tarama gerçek veriyle ölçüldü: en büyük sepet (68 foto, 2,46 MB)
+// için 7 ms (telefonda ~29 ms) — mevcut kayıt zinciri zaten ~3300 ms, yani %3'ü bile değil.
+// Tam taramada: 320/320 yakalandı, 412 gerçek fotoğrafta sıfır çarpışma.
+function _fotoIz(s) {
+    if (typeof s !== 'string' || !s) return '';
+    var n = s.length, h = 0;
+    for (var i = 0; i < n; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return n + ':' + h;
+}
+function _urunIz(u) {
+    u = u || {};
+    return { uid: String(u.uid || ''), gram: String(u.gram), fiyat: String(u.fiyat),
+             gb: String(u.gb || 1), adet: String(u.adet == null ? '' : u.adet), ih: _fotoIz(u.img) };
+}
+// Bir meta durumundan ata nesnesi üret
+function _ataUret(m) {
+    m = m || {};
+    var k = (m.kurlar && typeof m.kurlar === 'object') ? m.kurlar : {};
+    var kn = {};
+    for (var i = 0; i < _kurFields.length; i++) {
+        var v = k[_kurFields[i]];
+        kn[_kurFields[i]] = (v === undefined || v === null) ? '' : String(v);
+    }
+    return { v: META_ATA_SURUM, kurlar: kn, urunler: (Array.isArray(m.urunler) ? m.urunler : []).map(_urunIz) };
+}
+// Yerelde GÖNDERİLMEMİŞ meta değişikliği var mı? (ata yoksa "bilmiyoruz" → yok say;
+// ilk bulut meta'sı görülünce ata kurulur ve buradan sonrası kesinleşir)
+function _metaKirliMi() {
+    if (!_metaAta) return false;
+    try { return _kanonikJson(_ataUret({ urunler: urunler, kurlar: kurlarRaw() })) !== _kanonikJson(_metaAta); }
+    catch (e) { return false; }
 }
 
 function _authErr(msg) { var e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
@@ -1752,29 +1860,110 @@ function _kuyruguBosalt() {
     clearTimeout(_pushTimer);
     _pushTimer = setTimeout(_bulutGonder, gecikme);
 }
-// meta karşılaştırması için TEK NORMALİZE BİÇİM.
-// ŞART: Firebase BOŞ diziyi/nesneyi saklamaz → yazdığımız `urunler: []` bulutta HİÇ görünmez.
-// İki taraf farklı şekillerde karşılaştırılırsa "hep değişmiş" sanılır ve sonsuz
-// yaz-oku-yaz döngüsü oluşur (v35'te bu oldu). Her iki taraf da BURADAN geçmeli.
+// Buluttan gelen meta'yı TEK biçime indir.
+// ŞART: Firebase BOŞ diziyi saklamaz → yazdığımız `urunler: []` bulutta HİÇ görünmez; ayrıca
+// seyrek dizi NESNE olarak geri gelir. İkisi de burada düzleştirilir.
 function _metaNormalize(m) {
     m = m || {};
     var u = Array.isArray(m.urunler) ? m.urunler : (m.urunler && typeof m.urunler === 'object'
             ? Object.keys(m.urunler).sort(function (x, y) { return x - y; }).map(function (k) { return m.urunler[k]; })
             : []);
+    u = u.filter(function (x) { return x && typeof x === 'object'; });
     var k = (m.kurlar && typeof m.kurlar === 'object') ? m.kurlar : {};
-    var kn = {};   // kur değerleri metne sabitlenir (sayı/metin farkı döngü yapmasın)
-    Object.keys(k).sort().forEach(function (a2) { if (k[a2] !== undefined && k[a2] !== null) kn[a2] = String(k[a2]); });
-    var o;
-    try { o = JSON.parse(JSON.stringify({ urunler: u, kurlar: kn })); } catch (e) { o = { urunler: [], kurlar: {} }; }
-    o.uAdet = u.length;
-    return _kanonikJson(o);
+    var kn = {};
+    Object.keys(k).forEach(function (a2) { if (k[a2] !== undefined && k[a2] !== null) kn[a2] = String(k[a2]); });
+    return { urunler: u, kurlar: kn };
 }
-// meta'nın ŞU ANKİ hâli — gönderilmemiş meta'yı tespit etmek için
-function _metaJsonSimdi() { return _metaNormalize({ urunler: urunler, kurlar: kurlarRaw() }); }
+/* ---- 3 YÖNLÜ BİRLEŞTİRME: ata (parmak izi) / yerel / bulut ----
+   Kurallar fişlerdekiyle AYNI mantık:
+     ata'da yok + yerelde var        → gönderilmemiş yeni ürün, KORU
+     ata'da yok + bulutta var        → karşı cihaz eklemiş, AL
+     ata'da var + yerelde yok        → BİZ sildik, çıkar
+     ata'da var + bulutta yok        → karşı cihaz sildi, çıkar
+     üçünde de var                   → alan bazlı; ikisi de değiştiyse BULUT kazanır + bildirim
+   Ata YOKSA (ilk kurulum / sürüm atlaması): BİRLEŞİM — hiçbir şey silinmez, kayıp olmaz.
+   ÇAKIŞMADA HEP BULUT KAZANIR: kaybeden cihazın sonucu buluta EŞİT çıkar, o cihaz yazmaz →
+   yaz-eko-yaz döngüsü yapısal olarak imkânsız (v35'te bizi yakan buydu). */
+function _metaBirlestir(ata, yerel, bulut) {
+    var catisma = [];
+    var ataU = {}, ataSira = [];
+    if (ata) (ata.urunler || []).forEach(function (a) { if (a && a.uid) { ataU[a.uid] = a; ataSira.push(a.uid); } });
+    var yU = {}, bU = {};
+    (yerel.urunler || []).forEach(function (u) { if (u && u.uid) yU[u.uid] = u; });
+    (bulut.urunler || []).forEach(function (u) { if (u && u.uid) bU[u.uid] = u; });
+
+    var esit = function (a, b) { return _kanonikJson(a) === _kanonikJson(b); };
+    var sonuc = {};
+    Object.keys(yU).concat(Object.keys(bU)).forEach(function (uid) {
+        if (sonuc[uid] !== undefined) return;
+        var a = ataU[uid], y = yU[uid], b = bU[uid];
+        var ataVar = a !== undefined, yVar = y !== undefined, bVar = b !== undefined;
+        if (!ataVar) {
+            if (yVar && bVar) {                                  // iki cihaz da aynı uid'i üretmiş (göç)
+                if (esit(_urunIz(y), _urunIz(b))) { sonuc[uid] = b; return; }
+                sonuc[uid] = _urunBirlestir(null, y, b, catisma); return;
+            }
+            sonuc[uid] = yVar ? y : b;                           // tek tarafta yeni → al/koru
+            return;
+        }
+        if (!yVar || !bVar) { sonuc[uid] = null; return; }        // bir taraf sildi → çıkar
+        var yDegisti = !esit(_urunIz(y), a), bDegisti = !esit(_urunIz(b), a);
+        if (!yDegisti && !bDegisti) { sonuc[uid] = b; return; }
+        if (yDegisti && !bDegisti) { sonuc[uid] = y; return; }    // gönderilmemiş yerel düzenleme
+        if (!yDegisti && bDegisti) { sonuc[uid] = b; return; }
+        sonuc[uid] = _urunBirlestir(a, y, b, catisma);            // ikisi de değişti → alan bazlı
+    });
+
+    // SIRA: ata sırası korunur (iki cihaz da aynı atadan gelir). Ata'da olmayanlar sona eklenir.
+    // Ata yoksa YEREL sıra korunur → göç anında sepetin görünen sırası bozulmaz.
+    var sira = [], eklendi = {};
+    var ekle = function (uid) { if (sonuc[uid] && !eklendi[uid]) { sira.push(sonuc[uid]); eklendi[uid] = 1; } };
+    if (ata) ataSira.forEach(ekle);
+    else (yerel.urunler || []).forEach(function (u) { if (u && u.uid) ekle(u.uid); });
+    Object.keys(sonuc).filter(function (u) { return sonuc[u] && !eklendi[u]; }).sort().forEach(ekle);
+
+    // KURLAR — alan bazlı 3 yönlü. localeCompare YOK, düz karşılaştırma.
+    var kur = {};
+    for (var i = 0; i < _kurFields.length; i++) {
+        var ad = _kurFields[i];
+        var av = ata ? String(ata.kurlar[ad] === undefined ? '' : ata.kurlar[ad]) : null;
+        var yv = String(yerel.kurlar[ad] === undefined ? '' : yerel.kurlar[ad]);
+        var bv = String(bulut.kurlar[ad] === undefined ? '' : bulut.kurlar[ad]);
+        var bGecerli = _kurGecerliMi(ad, bv);
+        if (yv === bv) { kur[ad] = yv; continue; }
+        if (!bGecerli) { kur[ad] = yv; continue; }                // geçersiz bulut değeri ASLA kazanmaz
+        if (av === null) { kur[ad] = bv; catisma.push('Kur ' + (_kurAdlari[ad] || ad) + ': ' + yv + ' yerine ' + bv); continue; }
+        if (yv === av) { kur[ad] = bv; continue; }                // sadece bulut değişmiş
+        if (bv === av) { kur[ad] = yv; continue; }                // sadece yerel değişmiş (gönderilmemiş)
+        kur[ad] = bv; catisma.push('Kur ' + (_kurAdlari[ad] || ad) + ': ' + yv + ' yerine ' + bv);
+    }
+    return { urunler: sira, kurlar: kur, catisma: catisma };
+}
+// Tek ürünün alanlarını birleştir: ata'ya göre değişeni al, ikisi de değiştiyse BULUT kazanır.
+function _urunBirlestir(a, y, b, catisma) {
+    var izY = _urunIz(y), izB = _urunIz(b);
+    var r = {}, k;
+    for (k in y) if (Object.prototype.hasOwnProperty.call(y, k)) r[k] = y[k];
+    var alanlar = [['gram', 'gram'], ['fiyat', 'fiyat'], ['gb', 'gb'], ['adet', 'adet'], ['img', 'ih']];
+    var carpisan = false;
+    for (var i = 0; i < alanlar.length; i++) {
+        var alan = alanlar[i][0], izAd = alanlar[i][1];
+        var ay = izY[izAd], ab = izB[izAd], aa = a ? a[izAd] : null;
+        if (ay === ab) continue;
+        if (aa === null) { r[alan] = b[alan]; carpisan = true; continue; }
+        if (ay === aa) { r[alan] = b[alan]; continue; }           // sadece bulut değişmiş
+        if (ab === aa) continue;                                  // sadece yerel değişmiş → yereli koru
+        r[alan] = b[alan]; carpisan = true;                       // ikisi de → bulut
+    }
+    if (carpisan && catisma) catisma.push('Sepette ' + y.gram + 'g · ' + y.fiyat + '¥ ürünü iki cihazda birden değişmiş — bulut sürümü uygulandı');
+    return r;
+}
 function _bekleyenIsVar() {
     if (Object.keys(_silinen).length) return true;
-    // GÖNDERİLMEMİŞ meta da bekleyen iştir — yoksa başarısız bir sepet/kur yazımı hiç kurtarılmaz
-    try { if (_lastMetaJson !== null && _metaJsonSimdi() !== _lastMetaJson) return true; } catch (e) {}
+    // GÖNDERİLMEMİŞ meta da bekleyen iştir — yoksa başarısız bir sepet/kur yazımı hiç kurtarılmaz.
+    // Ata KALICI olduğu için bu, uygulamayı kapatıp açsan da doğru cevabı verir (eski sürümde
+    // ata bellekteydi, açılışta null oluyordu ve bekleyen sepet "yok" sanılıyordu).
+    try { if (_metaKirliMi()) return true; } catch (e) {}
     for (var i = 0; i < (fisler || []).length; i++) {
         var f = fisler[i]; if (!f || f.id == null) continue;
         try { if (_lastFisMap[String(f.id)] !== _kanonikJson(f)) return true; } catch (e) {}
@@ -1800,27 +1989,34 @@ function _bulutGonder() {
         try { clean = JSON.parse(JSON.stringify(curMap[id])); s = _kanonikJson(clean); } catch (e) { return; }
         if (_lastFisMap[id] !== s) jobs.push({ set: true, id: id, clean: clean, s: s });
     });
-    var meta;
+    var meta, metaAtaYeni = null;
     try { meta = JSON.parse(JSON.stringify({ urunler: urunler, kurlar: kurlarRaw() })); } catch (e) { meta = { urunler: [], kurlar: {} }; }
     // Firebase BOŞ diziyi saklamaz (null'a çevirir) → "sepeti temizle" karşı cihaza hiç ulaşmıyordu.
     // uAdet sayacı boş sepeti açıkça bildirir.
     meta.uAdet = (urunler || []).length;
-    var metaJson = _metaNormalize(meta);     // bulutla AYNI biçimde karşılaştır (yoksa sonsuz döngü)
+    // Ata, GÖNDERİLEN temiz kopyadan üretilir (canlı global'den DEĞİL): gönderim uçarken kullanıcı
+    // sepete dokunursa bir sonraki _metaKirliMi() doğru şekilde "kirli" der.
+    try { metaAtaYeni = _ataUret(meta); } catch (e) { metaAtaYeni = null; }
     meta.updatedAt = Date.now();
 
     var toplam = jobs.length, i = 0, hata = 0, BATCH = 6;
     function bitir() {
-        _gonderimAktif = false;
         _senkronDurumKaydet();   // onaylanan yazma/silmeler diske → uygulama kapansa da tekrarlanmaz
         // meta'yı SADECE değiştiyse yaz — eskiden her fiş dokunuşunda koşulsuz yazılıp
         // karşı cihazın sepetini eziyordu. Hata artık sayılıyor (sessizce kaybolmuyor).
-        var metaYazildi = (metaJson !== _lastMetaJson);
+        // _metaBulutGoruldu ŞART: buluttaki meta'yı GÖRMEDEN yazarsak, bağlanma anında bizim
+        // eski sepetimiz karşı cihazın yeni sepetini ezer (ters yönde aynı hata).
+        var metaYazildi = _metaBulutGoruldu && _metaKirliMi();
         // meta yazımının SONUCU belli olmadan karar VERME. Eskiden `set` beklenmiyordu; `hata++`
         // karardan sonra çalıştığı için başarısız meta'da bile "✅ Senkron" yazılıp tekrar denenmiyordu.
         var pMeta = metaYazildi
-            ? base.child('meta').set(meta).then(function () { _lastMetaJson = metaJson; }).catch(function () { hata++; })
+            ? base.child('meta').set(meta).then(function () { _metaAta = metaAtaYeni; _metaAtaKaydet(); }).catch(function () { hata++; })
             : Promise.resolve();
         pMeta.then(function () {
+            // Uçuş bayrağı meta yazımı BİTTİKTEN sonra iner. Eskiden bitir()'in İLK satırındaydı;
+            // baglanCloud'un "uçuşta gönderim varsa korumayı düşürme" siperi böylece deliniyor ve
+            // fiş kaydettikten sonra buluttaki ESKİ sepet geri yüklenebiliyordu.
+            _gonderimAktif = false;
             if (hata > 0 && _retryCount < 8) {
                 _retryCount++;
                 _bulutDurum('⚠️ ' + hata + ' parça gitmedi — tekrar deniyorum (' + _retryCount + ')', '#fbbf24');
@@ -1885,18 +2081,41 @@ function _durumBildir() {
 }
 // Push sırasında gelen meta'yı SAKLA, push bitince uygula (on('value') aynı değeri tekrar yollamaz → kayıp olurdu)
 function _bekleyenMetaUygula() { if (!_bekleyenMeta) return; var m = _bekleyenMeta; _bekleyenMeta = null; _metaUygula(m); }
+var _sonCatismaMetni = '';
 function _metaUygula(m) {
-    if (!m) return;
-    // Gelen meta'yı "son bilinen" say → hemen geri yazma döngüsü oluşmasın
-    try { _lastMetaJson = _metaNormalize(m); } catch (e) {}
+    // m null = bulutta meta YOK. "Boş" olarak işle — eskiden `return` ediliyordu ve cihaz
+    // "bulut boş" bilgisini HİÇ öğrenemiyordu (→ _metaBulutGoruldu hiç true olmaz, sepet hiç gitmez).
+    var bulut, sonuc;
+    try { bulut = _metaNormalize(m || {}); } catch (e) { bulut = { urunler: [], kurlar: {} }; }
+    _metaBulutGoruldu = true;
+    // Karşı cihaz v40 veya eski olabilir → gelen sepette uid olmayabilir. AYNI belirleyici
+    // formülle tamamla ki iki taraf aynı ürüne aynı kimliği versin (yoksa ürünler İKİZLENİR).
+    try { _uidGarantile(bulut.urunler); _uidGarantile(urunler); } catch (e) {}
+    try {
+        sonuc = _metaBirlestir(_metaAta, { urunler: urunler, kurlar: kurlarRaw() }, bulut);
+    } catch (e) { return; }   // birleştirme çökerse YERELE DOKUNMA (eski davranış veri siliyordu)
     _applyingRemote = true;
     try {
-        if (Array.isArray(m.urunler)) { urunler = m.urunler; dbSet('urunler', urunler).catch(function () {}); }
-        else if (m.uAdet === 0) { urunler = []; dbSet('urunler', urunler).catch(function () {}); }   // karşı cihaz sepeti BOŞALTMIŞ
-        _kurlariUygula(m.kurlar);
+        urunler = sonuc.urunler;
+        dbSet('urunler', urunler).catch(function () {});
+        _kurlariUygula(sonuc.kurlar);
+        // ATA = GÖRÜLEN BULUT hâli (birleştirme SONUCU değil!). Sonucu ata yaparsak
+        // "gönderilmediği hâlde gönderilmiş sanma" hatası geri gelir ve _bekleyenIsVar yalan söyler.
+        _metaAta = _ataUret(bulut);
+        _metaAtaKaydet();
     } catch (e) {}
     _applyingRemote = false;   // HER ZAMAN bırak (donma yok)
     try { onGirisDegis(); _ekranYenile(); } catch (e) {}
+    // ÇAKIŞMA BİLDİRİMİ — sessiz kayıp yok. Aynı mesajı tekrar tekrar gösterme.
+    if (sonuc.catisma && sonuc.catisma.length) {
+        var metin = sonuc.catisma.slice(0, 6).join('\n');
+        if (metin !== _sonCatismaMetni) {
+            _sonCatismaMetni = metin;
+            try { alert('ℹ️ Aynı bilgi iki cihazda birden değişmiş:\n\n' + metin + '\n\nBulut sürümü uygulandı.'); } catch (e) {}
+        }
+    }
+    // Birleştirme sonucu buluttan FARKLIYSA gönderilecek iş var demektir → karşı cihaz da yakınsasın
+    _kuyruguBosalt();
 }
 
 // Bulut olaylarını topluca işle. Gönderim sürerken ERTELENİR ama ASLA DÜŞMEZ.
@@ -1905,6 +2124,9 @@ function _rebuildZamanla() {
     clearTimeout(_rebuildTimer);
     _rebuildTimer = setTimeout(function () {
         if (_pendingPush) { _rebuildZamanla(); return; }   // gönderim sürüyor → SONRA tekrar dene, kaybetme
+        // Bekletilen meta'yı da BURADAN uygula: eskiden yalnızca bitir() çağırıyordu, bu yüzden
+        // watchdog yoluyla biten bir gönderimde saklanan meta sonsuza kadar askıda kalabiliyordu.
+        _bekleyenMetaUygula();
         _birlestirVeUygula();
     }, 50);
 }
@@ -1997,6 +2219,10 @@ function baglanCloud() {
     // Uçuşta bir gönderim VARSA korumayı düşürme: meta en sonda yazılır, buluttaki meta hâlâ ESKİ;
     // bayrağı burada indirirsek meta dinleyicisi eski sepeti uygulayıp gönderilmekte olanı ezer.
     if (!_gonderimAktif) { _pendingPush = false; clearTimeout(_pushWatchdog); }
+    // Bu bağlantıda buluttaki meta'yı HENÜZ görmedik. Görmeden yazarsak, karşı cihazın bizden
+    // sonra eklediği sepet ürünlerini eziyoruz (ata bizim eski hâlimizi gösterdiği için birleştirme
+    // onları "yeni" olarak göremez). Dinleyici ilk tetiklendiğinde tekrar true olur.
+    _metaBulutGoruldu = false;
     var base = firebase.database().ref('users/' + _user.uid);
     if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.child('rev').off(); } catch (e) {} }
     _fbRef = base;
@@ -2011,7 +2237,8 @@ function baglanCloud() {
             try {
                 fisler = []; urunler = [];
                 dbSet('fisler', fisler).catch(function () {}); dbSet('urunler', urunler).catch(function () {});
-                _lastFisMap = {}; _silinen = {}; _oncekiIdler = {}; _lastMetaJson = null;
+                _lastFisMap = {}; _silinen = {}; _oncekiIdler = {};
+                _metaAta = null; _metaBulutGoruldu = false; _metaAtaKaydet();   // yeni hesabın meta'sı sıfırdan kurulsun
                 _senkronDurumKaydet();
             } catch (e) {}
             _applyingRemote = false;
@@ -2048,7 +2275,9 @@ function baglanCloud() {
     });
     // meta (sepet + kurlar) — push sürerken SAKLA, düşürme (eski sürümde kalıcı kayıp oluyordu)
     base.child('meta').on('value', function (s) {
-        var m = s.val(); if (!m) return;
+        // `null` da GEÇERLİ bir cevaptır: "bulutta meta yok". Eskiden burada return ediliyordu ve
+        // cihaz bunu hiç öğrenemiyordu → _metaBulutGoruldu hiç true olmaz, sepet hiç gönderilmezdi.
+        var m = s.val() || {};
         if (_pendingPush) { _bekleyenMeta = m; return; }
         _metaUygula(m);
     }, function () {});
@@ -2104,7 +2333,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 40');
+    L.push('Sürüm 41');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
@@ -2208,9 +2437,11 @@ kurKaydet = function() { _origKK.apply(this, arguments); bulutYaz(); };
                 _cloudBaslatBekle();
             } else {
                 if (_fbRef) { try { _fbRef.child('fisler').off(); _fbRef.child('meta').off(); _fbRef.child('rev').off(); _fbRef.off(); } catch(e){} _fbRef = null; }
-                // Bellekteki bulut aynasını temizle. Ortak ata (_lastFisMap) ve mezar taşları (_silinen)
-                // KORUNUR — gönderilmemiş silme emirleri çıkış yüzünden kaybolmasın.
-                _lastSyncJson = null; _pendingPush = false; _cloudJson = {}; _bekleyenMeta = null; _lastMetaJson = null; _gonderimAktif = false;
+                // Bellekteki bulut aynasını temizle. Ortak atalar (_lastFisMap, _metaAta) ve mezar
+                // taşları (_silinen) KORUNUR — gönderilmemiş değişiklikler çıkış yüzünden kaybolmasın.
+                // _metaBulutGoruldu SIFIRLANIR: yeni oturumda bulutu görmeden yazmayalım.
+                _lastSyncJson = null; _pendingPush = false; _cloudJson = {}; _bekleyenMeta = null; _gonderimAktif = false;
+                _metaBulutGoruldu = false;
                 _sonRev = null; _revBilindi = false; _sonTamSenkron = 0; _dinleyiciCanli = false;   // yeni oturum tam senkronla başlasın
                 clearTimeout(_pushWatchdog); clearTimeout(_rebuildTimer);
                 _authGoster(true);
