@@ -1,9 +1,9 @@
-// Şok Nokta - çevrimdışı önbellek (service worker)
+// Güçlü Bijuteri - çevrimdışı önbellek (service worker)
 // Önbellek adı BU YAYINA özel. Aynı origin'de (furkanonder-collab.github.io) birden çok
 // repo olduğu için düz 'sok-nokta-vNN' adı ortaktı → repolar birbirinin önbelleğini siliyordu.
 var SCOPE = self.location.pathname.replace(/\/[^\/]*$/, '');       // ör. /sn-guclu-r9k4m
 var PREFIX = 'sok-nokta' + SCOPE.replace(/\//g, '-') + '-';
-var CACHE = PREFIX + 'v38';
+var CACHE = PREFIX + 'v39';
 var ESKI_DESEN = /^sok-nokta-v\d+$/;                                // v33 ve öncesinin ortak adları
 var ASSETS = ['./', './index.html'];
 
