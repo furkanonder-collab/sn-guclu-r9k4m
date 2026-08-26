@@ -3,7 +3,7 @@
 // repo olduğu için düz 'sok-nokta-vNN' adı ortaktı → repolar birbirinin önbelleğini siliyordu.
 var SCOPE = self.location.pathname.replace(/\/[^\/]*$/, '');       // ör. /sn-guclu-r9k4m
 var PREFIX = 'sok-nokta' + SCOPE.replace(/\//g, '-') + '-';
-var CACHE = PREFIX + 'v41';
+var CACHE = PREFIX + 'v42';
 var ESKI_DESEN = /^sok-nokta-v\d+$/;                                // v33 ve öncesinin ortak adları
 var ASSETS = ['./', './index.html'];
 

@@ -97,6 +97,19 @@ body {
 .satis-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 9px 12px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.22); border-radius: 10px; font-size: 12px; color: #c4b5fd; }
 .satis-row b { color: #f1f5f9; font-size: 14px; font-weight: 700; }
 
+/* Siparis detayinda BUYUK fotograf (mal kabulde urunu gercekten gorebilmek icin).
+   Sadece kaydedilmis fiste (fisId != null) acilir; sepette liste kisa kalsin diye kucuk kalir.
+   Fotograflar 300x400 DIKEY kaydediliyor -> kutu da 3/4, `contain` ile hicbir sey kirpilmaz
+   (eski 52x52 kare kutu `cover` ile fotografin altini ustunu kesiyordu).
+   Genislik yuzde: dar telefonda sag sutun ezilmesin, genis ekranda 200px'i asmasin —
+   kaynak 400px oldugu icin daha buyugu zaten bulaniklasir. */
+.urun-ust { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.urun-sag { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.foto-buyuk .urun-head { margin-bottom: 0; }
+.foto-buyuk .urun-foto, .foto-buyuk .foto-ekle { width: 48%; max-width: 200px; height: auto; aspect-ratio: 3 / 4; border-radius: 14px; object-fit: contain; background: #0b1120; font-size: 44px; }
+/* Sag sutun dar -> "240 adet" ile "Alis" kutusu yan yana degil, alt alta */
+.foto-buyuk .kart-adet-row { flex-direction: column; align-items: stretch; gap: 8px; }
+
 /* Sola kaydır → Sil */
 .swipe-wrap { position: relative; overflow: hidden; border-radius: 16px; margin-bottom: 12px; background: #dc2626; }
 .swipe-wrap .urun-item, .swipe-wrap .fis-card { margin-bottom: 0; }
@@ -335,7 +348,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 41 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 42 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1020,22 +1033,27 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     var lineYuan = (u.fiyat || 0) * adet;
     var h = hesapla(u.gram, u.fiyat, u.gb || 1, k);
     var satisToplam = h.ortGuclu * adet;
-    var s = '<div class="urun-item"><div class="urun-head">';
-    if (u.img) s += '<img class="urun-foto" src="' + u.img + '"' + (fisId != null ? ' data-fis="' + fisId + '" data-j="' + i + '"' : '') + ' onclick="fotoBuyutEl(this)">';
-    else if (editable) s += '<button class="foto-ekle" onclick="fotoTiklandi(' + i + ')">📷</button>';
-    else s += '<div class="foto-ekle" style="cursor:default">🖼️</div>';
-    s += '<div class="urun-badge">' + (i+1) + '</div>';
-    s += '<div class="urun-info"><b>' + u.gram + 'g</b> · <b>' + u.fiyat + '¥</b></div>';
-    if (editable) s += '<button class="btn-sil" onclick="sil(' + i + ')">✕</button>';
-    s += '</div>';
-    s += '<div class="kart-adet-row">';
+    // Sipariş detayında (fisId != null) fotoğraf BÜYÜK gösterilir: solda dikey foto,
+    // bilgiler sağda. Sepette eski kompakt düzen aynen korunur (liste kısa kalsın).
+    var buyuk = (fisId != null);
+    var foto = '', bilgi = '', adetRow = '';
+    if (u.img) foto += '<img class="urun-foto" src="' + u.img + '"' + (fisId != null ? ' data-fis="' + fisId + '" data-j="' + i + '"' : '') + ' onclick="fotoBuyutEl(this)">';
+    else if (editable) foto += '<button class="foto-ekle" onclick="fotoTiklandi(' + i + ')">📷</button>';
+    else foto += '<div class="foto-ekle" style="cursor:default">🖼️</div>';
+    bilgi += '<div class="urun-badge">' + (i+1) + '</div>';
+    bilgi += '<div class="urun-info"><b>' + u.gram + 'g</b> · <b>' + u.fiyat + '¥</b></div>';
+    if (editable) bilgi += '<button class="btn-sil" onclick="sil(' + i + ')">✕</button>';
+    adetRow += '<div class="kart-adet-row">';
     if (editable) {
-        s += '<div class="kart-adet"><input type="number" inputmode="numeric" placeholder="Adet" value="' + (u.adet ? u.adet : '') + '" onchange="adetDegistir(' + i + ',this.value)"></div>';
+        adetRow += '<div class="kart-adet"><input type="number" inputmode="numeric" placeholder="Adet" value="' + (u.adet ? u.adet : '') + '" onchange="adetDegistir(' + i + ',this.value)"></div>';
     } else {
-        s += '<div class="kart-adet" style="width:auto"><b style="color:#f1f5f9;font-size:15px">' + adet + ' adet</b></div>';
+        adetRow += '<div class="kart-adet" style="width:auto"><b style="color:#f1f5f9;font-size:15px">' + adet + ' adet</b></div>';
     }
-    s += '<div class="toplam-kutu"><span class="lbl">Alış (¥×adet)</span><span class="val">' + (adet > 0 ? yuanUsdStr(lineYuan, k) : '—') + '</span></div>';
-    s += '</div>';
+    adetRow += '<div class="toplam-kutu"><span class="lbl">Alış (¥×adet)</span><span class="val">' + (adet > 0 ? yuanUsdStr(lineYuan, k) : '—') + '</span></div>';
+    adetRow += '</div>';
+    var s = buyuk
+        ? '<div class="urun-item foto-buyuk"><div class="urun-ust">' + foto + '<div class="urun-sag"><div class="urun-head">' + bilgi + '</div>' + adetRow + '</div></div>'
+        : '<div class="urun-item"><div class="urun-head">' + foto + bilgi + '</div>' + adetRow;
     s += '<div class="satis-row"><span>Satış birim <b>₺' + f(h.ortGuclu) + '</b></span><span>' + (adet > 0 ? 'Toplam <b>₺' + f(satisToplam) + '</b>' : '') + '</span></div>';
     if (fisId != null) {
         var _gd = urunGeldiDurum(u);
@@ -2333,7 +2351,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 41');
+    L.push('Sürüm 42');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
