@@ -178,6 +178,9 @@ body {
 .fis-alt .adet { font-size: 12px; color: #94a3b8; }
 .durum-rozet { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-left: 4px; white-space: nowrap; }
 .fis-varis { font-size: 11.5px; font-weight: 600; margin-top: 6px; }
+.ay-card { border-color: rgba(59,130,246,0.25); }
+.ay-rozet { font-size: 10px; font-weight: 800; padding: 1px 8px; border-radius: 999px; margin-left: 6px; background: rgba(59,130,246,0.18); color: #93c5fd; white-space: nowrap; }
+.ay-ok { font-size: 20px; font-weight: 400; color: #475569; line-height: 1; }
 .filtre-bar { display: flex; gap: 6px; margin-bottom: 12px; }
 .fbtn { flex: 1; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.15); color: #94a3b8; font-size: 12px; font-weight: 700; padding: 8px 5px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .fbtn.aktif { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
@@ -348,7 +351,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 42 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 44 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1204,6 +1207,14 @@ function _fisFiltreGecer(fs) {
     if (_siparisFiltre === 2) return _fisTamamMi(fs);    // Tamam
     return true;                                         // Tümü
 }
+// ==== AY GRUPLAMA (siparişleri verildikleri aya göre) ====
+var _acikAy = null;   // seçili ay anahtarı (null = ay listesi görünümü)
+var AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+function fisAyKey(fs) { var d = tarihParse(fs && fs.tarih); return d ? d.getFullYear() * 100 + d.getMonth() : -1; }   // yıl*100+ay (0-11); -1 = tarihsiz
+function ayEtiket(key) { return key === -1 ? 'Tarihsiz' : (AY_ADLARI[key % 100] + ' ' + Math.floor(key / 100)); }
+function ayAc(key) { _acikAy = key; _siparisScroll = 0; fislerRender(); window.scrollTo(0, 0); }
+function aylaraGeri() { _acikAy = null; fislerRender(); window.scrollTo(0, 0); }
+
 // Sipariş kartındaki gelme çubuğu — listeye bakınca hangi siparişin ne kadar sayıldığı görünsün.
 // (Bu bilgi eskiden SADECE siparişi açınca görünüyordu.)
 function _gelenBarHtml(fs) {
@@ -1234,11 +1245,56 @@ function fislerRender() {
         '<button class="fbtn' + (_siparisFiltre === 1 ? ' aktif' : '') + '" onclick="fisFiltreSet(1)">⏳ Eksik var</button>' +
         '<button class="fbtn' + (_siparisFiltre === 2 ? ' aktif' : '') + '" onclick="fisFiltreSet(2)">✅ Tamam</button>' +
     '</div>';
+
+    // ===== A) AY LİSTESİ (üst seviye — _acikAy yokken) =====
+    if (_acikAy === null) {
+        var gruplar = {}, sira = [];
+        var tY = 0, tU = 0, tCesit = 0, tAdet = 0, tKg = 0, tSay = 0;
+        for (var i = fisler.length - 1; i >= 0; i--) {
+            var fs = fisler[i];
+            if (!_fisFiltreGecer(fs)) continue;
+            var key = fisAyKey(fs);
+            if (!gruplar[key]) { gruplar[key] = { n: 0, gY: 0, gU: 0 }; sira.push(key); }
+            var fy = fisYuan(fs.urunler), fu = yuanUsd(fy, fs.kurlar || {});
+            gruplar[key].n++; gruplar[key].gY += fy; gruplar[key].gU += fu;
+            tSay++; tY += fy; tU += fu;
+            tCesit += fs.urunler.length; tAdet += toplamAdet(fs.urunler); tKg += toplamKg(fs.urunler);
+        }
+        if (tSay === 0) {
+            var _bmA = _siparisFiltre === 1 ? 'Eksiği olan sipariş yok — hepsi tamam 🎉'
+                     : (_siparisFiltre === 2 ? 'Tamamlanmış sipariş yok.' : 'Sipariş yok.');
+            el.innerHTML = fb + '<div class="empty"><div class="ico">🔍</div><p>' + _bmA + '</p></div>';
+            return;
+        }
+        sira.sort(function(a, b) { if (a === -1) return 1; if (b === -1) return -1; return b - a; });   // en yeni ay üstte, Tarihsiz en altta
+        var ah = '';
+        for (var s = 0; s < sira.length; s++) {
+            var k = sira[s], g = gruplar[k];
+            ah += '<div class="fis-card ay-card" onclick="ayAc(' + k + ')">' +
+                '<div class="fis-ust"><span class="fis-ad">📅 ' + ayEtiket(k) + ' <span class="ay-rozet">' + g.n + ' sipariş</span></span><span class="fis-tarih ay-ok">›</span></div>' +
+                '<div class="fis-alt"><span class="adet">aylık toplam</span><span class="fis-toplam">¥' + f(g.gY) + '<span class="usd" style="color:#a5b4fc">· $' + f(g.gU) + '</span></span></div>' +
+            '</div>';
+        }
+        var basA = _siparisFiltre === 1 ? '💰 Eksiği Olanlar' : (_siparisFiltre === 2 ? '💰 Tamamlananlar' : '💰 Tüm Siparişler');
+        ah += '<div class="toplam5">' +
+            '<div class="t5-info">📦 ' + tCesit + ' çeşit · ' + tAdet + ' adet · ' + kgStr(tKg) + ' kg</div>' +
+            '<div class="r1"><span class="l1">' + basA + '</span><span class="v1">¥' + f(tY) + '<span class="usd" style="color:#a5b4fc">· $' + f(tU) + '</span></span></div>' +
+            '<div class="r2"><span class="l2">+ %5 dahil</span><span class="v2">¥' + f(tY * 1.05) + '<span class="usd" style="color:#fde68a">· $' + f(tU * 1.05) + '</span></span></div>' +
+            nakliyeSatiri(tKg, getKurlar()) +
+        '</div>';
+        el.innerHTML = fb + ah;
+        return;
+    }
+
+    // ===== B) SEÇİLİ AYIN SİPARİŞLERİ (_acikAy dolu) =====
+    var nav = '<div class="fis-nav"><button class="btn-geri" onclick="aylaraGeri()">‹ Aylar</button></div>' +
+        '<div class="fis-baslik"><small>📅 ' + ayEtiket(_acikAy) + '</small></div>';
     var html = '';
     var gY = 0, gU = 0, gCesit = 0, gAdet = 0, gKg = 0, gosterilen = 0;
     for (var i = fisler.length - 1; i >= 0; i--) {
         var fs = fisler[i], dd = fs.durum || 0;
         if (!_fisFiltreGecer(fs)) continue;
+        if (fisAyKey(fs) !== _acikAy) continue;
         gosterilen++;
         var fy = fisYuan(fs.urunler);
         gY += fy; gU += yuanUsd(fy, fs.kurlar || {});
@@ -1255,19 +1311,19 @@ function fislerRender() {
         html += '</div></div></div>';
     }
     if (gosterilen === 0) {
-        var _bosMsg = _siparisFiltre === 1 ? 'Eksiği olan sipariş yok — hepsi tamam 🎉'
-                    : (_siparisFiltre === 2 ? 'Tamamlanmış sipariş yok.' : 'Sipariş yok.');
-        el.innerHTML = fb + '<div class="empty"><div class="ico">🔍</div><p>' + _bosMsg + '</p></div>';
+        var _bosMsg = _siparisFiltre === 1 ? 'Bu ayda eksiği olan sipariş yok.'
+                    : (_siparisFiltre === 2 ? 'Bu ayda tamamlanmış sipariş yok.' : 'Bu ayda sipariş yok.');
+        el.innerHTML = nav + fb + '<div class="empty"><div class="ico">🔍</div><p>' + _bosMsg + '</p></div>';
         return;
     }
-    var bas = _siparisFiltre === 1 ? '💰 Eksiği Olanlar' : (_siparisFiltre === 2 ? '💰 Tamamlananlar' : '💰 Tüm Siparişler');
+    var bas = _siparisFiltre === 1 ? '💰 Eksiği Olanlar' : (_siparisFiltre === 2 ? '💰 Tamamlananlar' : '💰 Ay Toplamı');
     html += '<div class="toplam5">' +
         '<div class="t5-info">📦 ' + gCesit + ' çeşit · ' + gAdet + ' adet · ' + kgStr(gKg) + ' kg</div>' +
         '<div class="r1"><span class="l1">' + bas + '</span><span class="v1">¥' + f(gY) + '<span class="usd" style="color:#a5b4fc">· $' + f(gU) + '</span></span></div>' +
         '<div class="r2"><span class="l2">+ %5 dahil</span><span class="v2">¥' + f(gY * 1.05) + '<span class="usd" style="color:#fde68a">· $' + f(gU * 1.05) + '</span></span></div>' +
         nakliyeSatiri(gKg, getKurlar()) +
     '</div>';
-    el.innerHTML = fb + html;
+    el.innerHTML = nav + fb + html;
     swipeKur();
 }
 // Siparişler listesindeki görünüm sırası (en yeni üstte) = id dizisi.
@@ -1276,6 +1332,7 @@ function fisSiraliIdler() {
     var ids = [];
     for (var i = fisler.length - 1; i >= 0; i--) {
         if (!_fisFiltreGecer(fisler[i])) continue;
+        if (_acikAy !== null && fisAyKey(fisler[i]) !== _acikAy) continue;   // detayda ◀▶ sadece açık ayda gezsin
         ids.push(fisler[i].id);
     }
     return ids;
@@ -1536,7 +1593,7 @@ function tabGoster(t) {
     document.getElementById('tab-fis').classList.toggle('aktif', t === 'fis');
     document.getElementById('tab-siparisler').classList.toggle('aktif', t === 'siparisler');
     if (t === 'fis') renderFis();
-    if (t === 'siparisler') fisGeri();
+    if (t === 'siparisler') { _acikAy = null; fisGeri(); }
     window.scrollTo(0, 0);
 }
 function tabRozetGuncelle() {
@@ -2351,7 +2408,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 42');
+    L.push('Sürüm 44');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
