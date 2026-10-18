@@ -181,6 +181,22 @@ body {
 .ay-card { border-color: rgba(59,130,246,0.25); }
 .ay-rozet { font-size: 10px; font-weight: 800; padding: 1px 8px; border-radius: 999px; margin-left: 6px; background: rgba(59,130,246,0.18); color: #93c5fd; white-space: nowrap; }
 .ay-ok { font-size: 20px; font-weight: 400; color: #475569; line-height: 1; }
+/* Katalog (tedarikçi vitrini) */
+.kat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.kat-card { background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.1); border-radius: 14px; overflow: hidden; }
+.kat-card.secili { border-color: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.3); }
+.kat-card img { width: 100%; aspect-ratio: 3/4; object-fit: contain; background: #0b1120; display: block; }
+.kat-bilgi { padding: 8px 10px; }
+.kat-fiyat { font-size: 15px; font-weight: 800; color: #fbbf24; }
+.kat-gram { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+.kat-not { font-size: 11px; color: #cbd5e1; margin-top: 3px; word-break: break-word; }
+.kat-adet { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.kat-adet button { width: 32px; height: 32px; border-radius: 9px; border: none; font-size: 19px; font-weight: 800; cursor: pointer; background: rgba(148,163,184,0.15); color: #e2e8f0; display: flex; align-items: center; justify-content: center; }
+.kat-adet button.art { background: rgba(52,211,153,0.2); color: #34d399; }
+.kat-adet .say { flex: 1; text-align: center; font-size: 15px; font-weight: 800; color: #f1f5f9; }
+.kat-siparis-bar { position: sticky; top: 6px; z-index: 10; margin-bottom: 12px; }
+.kat-siparis-bar button { width: 100%; background: linear-gradient(135deg,#10b981,#059669); border: none; color: #fff; border-radius: 12px; padding: 15px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(16,185,129,0.4); }
+.kat-siparis-bar button:disabled { opacity: 0.4; box-shadow: none; }
 .filtre-bar { display: flex; gap: 6px; margin-bottom: 12px; }
 .fbtn { flex: 1; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.15); color: #94a3b8; font-size: 12px; font-weight: 700; padding: 8px 5px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .fbtn.aktif { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
@@ -351,7 +367,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 44 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 45 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -400,6 +416,11 @@ body {
     <div id="fisDetay" style="display:none"></div>
 </div>
 
+<!-- ============ KATALOG (tedarikçi vitrini) ============ -->
+<div id="view-katalog" style="display:none">
+    <div id="katalogList"></div>
+</div>
+
 <!-- NOT: "Gelenler" sekmesi KALDIRILDI (v38). Ürünlerin gelme takibi zaten siparişin
      içinde yapılıyordu; o sekme aynı ürünleri yine sipariş adına göre gruplayıp
      TÜM fotoğrafları (yüzlerce, ~23 MB) tek sayfaya basıyordu. Yerine sipariş
@@ -409,6 +430,7 @@ body {
 <nav class="tabbar">
     <button id="tab-urun" class="aktif" onclick="tabGoster('urun')"><span class="ico">➕</span><span>Ürün Ekle</span></button>
     <button id="tab-fis" onclick="tabGoster('fis')"><span class="ico">🧾</span><span id="tabFisEt">Fiş</span></button>
+    <button id="tab-katalog" onclick="tabGoster('katalog')"><span class="ico">📦</span><span>Katalog</span></button>
     <button id="tab-siparisler" onclick="tabGoster('siparisler')"><span class="ico">📋</span><span id="tabSiparisEt">Siparişler</span></button>
 </nav>
 
@@ -1589,12 +1611,100 @@ function tabGoster(t) {
     document.getElementById('view-urun').style.display = (t === 'urun') ? 'block' : 'none';
     document.getElementById('view-fis').style.display = (t === 'fis') ? 'block' : 'none';
     document.getElementById('view-siparisler').style.display = (t === 'siparisler') ? 'block' : 'none';
+    document.getElementById('view-katalog').style.display = (t === 'katalog') ? 'block' : 'none';
     document.getElementById('tab-urun').classList.toggle('aktif', t === 'urun');
     document.getElementById('tab-fis').classList.toggle('aktif', t === 'fis');
     document.getElementById('tab-siparisler').classList.toggle('aktif', t === 'siparisler');
+    document.getElementById('tab-katalog').classList.toggle('aktif', t === 'katalog');
     if (t === 'fis') renderFis();
     if (t === 'siparisler') { _acikAy = null; fisGeri(); }
+    if (t === 'katalog') katalogAc();
     window.scrollTo(0, 0);
+}
+
+// ===== KATALOG (tedarikçi vitrini) — Firebase katalog/urunler'den oku, seç, sipariş ver =====
+var _katalog = [], _katalogSepet = {}, _katalogRev = null, _katalogYuklendi = false;
+function katalogAc() { katalogRender(); katalogYukle(); }
+function katalogYukle() {
+    if (typeof firebase === 'undefined' || !firebase.database || !_user) return;
+    firebase.database().ref('katalog/rev').once('value').then(function (s) {
+        var r = s.val();
+        if (_katalogYuklendi && r === _katalogRev) return;   // değişmemiş → yeniden indirme YOK
+        return firebase.database().ref('katalog/urunler').once('value').then(function (snap) {
+            _katalog = [];
+            snap.forEach(function (c) { var v = c.val() || {}; v._id = c.key; _katalog.push(v); });
+            _katalog.sort(function (a, b) { return (b.eklendi || 0) - (a.eklendi || 0); });
+            _katalogRev = r; _katalogYuklendi = true;
+            for (var k in _katalogSepet) { if (!_katalog.some(function (u) { return u._id === k; })) delete _katalogSepet[k]; }
+            katalogRender();
+        });
+    }).catch(function () {});
+}
+function katalogSay() { var n = 0; for (var k in _katalogSepet) n += _katalogSepet[k]; return n; }
+function katalogSepetDegistir(id, d) {
+    var cur = (_katalogSepet[id] || 0) + d;
+    if (cur <= 0) delete _katalogSepet[id]; else _katalogSepet[id] = cur;
+    katalogRender();
+}
+function katalogRender() {
+    var el = document.getElementById('katalogList');
+    if (!el) return;
+    if (!_katalog.length) {
+        el.innerHTML = '<div class="empty"><div class="ico">📦</div><p>' +
+            (_katalogYuklendi ? 'Katalogda ürün yok.<br>Tedarikçi ürün ekleyince burada görünür.' : 'Katalog yükleniyor…') + '</p></div>';
+        return;
+    }
+    var secN = katalogSay();
+    var h = '<div class="kat-siparis-bar"><button onclick="katalogSiparisVer()"' + (secN ? '' : ' disabled') + '>🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : '') + '</button></div><div class="kat-grid">';
+    for (var i = 0; i < _katalog.length; i++) {
+        var u = _katalog[i], a = _katalogSepet[u._id] || 0;
+        h += '<div class="kat-card' + (a ? ' secili' : '') + '">' +
+            '<img src="' + (u.img || '') + '">' +
+            '<div class="kat-bilgi"><div class="kat-fiyat">¥' + (u.fiyat || 0) + '</div>' +
+            '<div class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · düzine' : '') + '</div>' +
+            (u.aciklama ? '<div class="kat-not">' + escapeHtml(u.aciklama) + '</div>' : '') +
+            '<div class="kat-adet"><button onclick="katalogSepetDegistir(\'' + u._id + '\',-1)">−</button><span class="say">' + a + '</span><button class="art" onclick="katalogSepetDegistir(\'' + u._id + '\',1)">+</button></div>' +
+            '</div></div>';
+    }
+    el.innerHTML = h + '</div>';
+}
+function katalogSiparisVer() {
+    var secN = katalogSay();
+    if (!secN) return;
+    var secili = _katalog.filter(function (u) { return _katalogSepet[u._id]; });
+    if (!secili.length) return;
+    var sure = parseInt(prompt('Bu sipariş tahmini kaç günde gelir? (tedarik süresi)', '25'), 10);
+    if (!sure || sure < 1) sure = 25;
+    var bugun = new Date().toLocaleDateString('tr-TR');
+    // Fiş ürünleri — DİKKAT: fiş ürününe uid VERME (kanonik json bozulur, tüm siparişler yeniden yüklenir)
+    var urunlerY = secili.map(function (u) {
+        return { gram: u.gram || 0, fiyat: u.fiyat || 0, adet: _katalogSepet[u._id], gb: u.gb || 1, img: u.img || null };
+    });
+    var yeniId = Date.now();
+    fisler.push({
+        id: yeniId, ad: 'Katalog Siparişi ' + bugun, tarih: bugun, sure: sure, durum: 0,
+        kurlar: getKurlar(), urunler: urunlerY, toplam: fisYuan(urunlerY), kartFoto: null
+    });
+    fislerKaydet();   // IndexedDB + bulut (override)
+    // Tedarikçiye bildir + katalogdan düş + rev ilerlet
+    try {
+        var sipOzet = {
+            tarih: bugun, ts: firebase.database.ServerValue.TIMESTAMP, toplam: fisYuan(urunlerY),
+            urunler: secili.map(function (u) { return { img: u.img || null, fiyat: u.fiyat || 0, gram: u.gram || 0, gb: u.gb || 1, adet: _katalogSepet[u._id] }; })
+        };
+        firebase.database().ref('katalog/siparisler').push(sipOzet);
+        var updates = {};
+        secili.forEach(function (u) { updates['urunler/' + u._id] = null; });
+        updates['rev'] = firebase.database.ServerValue.TIMESTAMP;
+        firebase.database().ref('katalog').update(updates);
+    } catch (e) {}
+    // Yerelde de düş
+    _katalog = _katalog.filter(function (u) { return !_katalogSepet[u._id]; });
+    _katalogSepet = {}; _katalogRev = null; _katalogYuklendi = false;
+    tabRozetGuncelle();
+    alert('✅ Sipariş verildi: ' + secili.length + ' çeşit · ' + secN + ' adet.\nSiparişlerine "Verildi" olarak eklendi.');
+    tabGoster('siparisler');
+    fisAc(yeniId);
 }
 function tabRozetGuncelle() {
     document.getElementById('tabFisEt').innerHTML = 'Fiş' + (urunler.length ? '<span class="tab-rozet">' + urunler.length + '</span>' : '');
@@ -2408,7 +2518,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 44');
+    L.push('Sürüm 45');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
