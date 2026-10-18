@@ -193,7 +193,9 @@ body {
 .kat-adet { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .kat-adet button { width: 32px; height: 32px; border-radius: 9px; border: none; font-size: 19px; font-weight: 800; cursor: pointer; background: rgba(148,163,184,0.15); color: #e2e8f0; display: flex; align-items: center; justify-content: center; }
 .kat-adet button.art { background: rgba(52,211,153,0.2); color: #34d399; }
-.kat-adet .say { flex: 1; text-align: center; font-size: 15px; font-weight: 800; color: #f1f5f9; }
+.kat-adet .kat-say { flex: 1; min-width: 0; text-align: center; font-size: 16px; font-weight: 800; color: #f1f5f9; background: #0b1120; border: 1.5px solid #1e293b; border-radius: 8px; padding: 6px 2px; -webkit-appearance: none; }
+.kat-adet .kat-say:focus { outline: none; border-color: #34d399; }
+.kat-adet .kat-say::-webkit-outer-spin-button, .kat-adet .kat-say::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .kat-siparis-bar { position: sticky; top: 6px; z-index: 10; margin-bottom: 12px; }
 .kat-siparis-bar button { width: 100%; background: linear-gradient(135deg,#10b981,#059669); border: none; color: #fff; border-radius: 12px; padding: 15px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(16,185,129,0.4); }
 .kat-siparis-bar button:disabled { opacity: 0.4; box-shadow: none; }
@@ -367,7 +369,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 46 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 47 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1644,10 +1646,24 @@ function katalogYukle() {
     }).catch(function () {});
 }
 function katalogSay() { var n = 0; for (var k in _katalogSepet) n += _katalogSepet[k]; return n; }
-function katalogSepetDegistir(id, d) {
-    var cur = (_katalogSepet[id] || 0) + d;
-    if (cur <= 0) delete _katalogSepet[id]; else _katalogSepet[id] = cur;
-    katalogRender();
+// Adet: yazılabilir kutu + / − . YAZARKEN tüm grid'i YENİDEN ÇİZME (imleç kaçar) — yerinde güncelle.
+function katBtnTazele() {
+    var secN = katalogSay();
+    var b = document.querySelector('#view-katalog .kat-siparis-bar button');
+    if (b) { b.disabled = !secN; b.textContent = '🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : ''); }
+}
+function katSet(id, n) {
+    n = parseInt(n, 10); if (isNaN(n) || n < 0) n = 0;
+    if (n <= 0) delete _katalogSepet[id]; else _katalogSepet[id] = n;
+    var c = document.getElementById('kc-' + id);
+    if (c) c.classList.toggle('secili', !!_katalogSepet[id]);
+    katBtnTazele();
+}
+function katYaz(id, val) { katSet(id, val); }                 // kutuya elle yazınca
+function katAdim(id, d) {                                      // + / − tuşu
+    var cur = (_katalogSepet[id] || 0) + d; if (cur < 0) cur = 0;
+    katSet(id, cur);
+    var inp = document.getElementById('ki-' + id); if (inp) inp.value = cur > 0 ? cur : '';
 }
 function katalogRender() {
     var el = document.getElementById('katalogList');
@@ -1661,12 +1677,12 @@ function katalogRender() {
     var h = '<div class="kat-siparis-bar"><button onclick="katalogSiparisVer()"' + (secN ? '' : ' disabled') + '>🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : '') + '</button></div><div class="kat-grid">';
     for (var i = 0; i < _katalog.length; i++) {
         var u = _katalog[i], a = _katalogSepet[u._id] || 0;
-        h += '<div class="kat-card' + (a ? ' secili' : '') + '">' +
+        h += '<div class="kat-card' + (a ? ' secili' : '') + '" id="kc-' + u._id + '">' +
             '<img src="' + (u.img || '') + '">' +
             '<div class="kat-bilgi"><div class="kat-fiyat">¥' + (u.fiyat || 0) + '</div>' +
             '<div class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · düzine' : '') + '</div>' +
             (u.aciklama ? '<div class="kat-not">' + escapeHtml(u.aciklama) + '</div>' : '') +
-            '<div class="kat-adet"><button onclick="katalogSepetDegistir(\'' + u._id + '\',-1)">−</button><span class="say">' + a + '</span><button class="art" onclick="katalogSepetDegistir(\'' + u._id + '\',1)">+</button></div>' +
+            '<div class="kat-adet"><button onclick="katAdim(\'' + u._id + '\',-1)">−</button><input id="ki-' + u._id + '" class="kat-say" type="number" inputmode="numeric" min="0" value="' + (a || '') + '" placeholder="0" onclick="this.select()" oninput="katYaz(\'' + u._id + '\',this.value)"><button class="art" onclick="katAdim(\'' + u._id + '\',1)">+</button></div>' +
             '</div></div>';
     }
     el.innerHTML = h + '</div>';
@@ -2521,7 +2537,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 46');
+    L.push('Sürüm 47');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
