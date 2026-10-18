@@ -367,7 +367,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 45 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 46 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1624,13 +1624,16 @@ function tabGoster(t) {
 
 // ===== KATALOG (tedarikçi vitrini) — Firebase katalog/urunler'den oku, seç, sipariş ver =====
 var _katalog = [], _katalogSepet = {}, _katalogRev = null, _katalogYuklendi = false;
+// Katalog AYNI hesabın altında tutulur (users/{uid}/katalog) → ayrı güvenlik kuralı GEREKMEZ.
+// Tedarikçi de aynı hesapla girip ürün ekler; ana senkron (fisler/meta/rev) bu düğüme dokunmaz.
+function katRef(p) { var b = 'users/' + (_user && _user.uid) + '/katalog'; return firebase.database().ref(p ? b + '/' + p : b); }
 function katalogAc() { katalogRender(); katalogYukle(); }
 function katalogYukle() {
     if (typeof firebase === 'undefined' || !firebase.database || !_user) return;
-    firebase.database().ref('katalog/rev').once('value').then(function (s) {
+    katRef('rev').once('value').then(function (s) {
         var r = s.val();
         if (_katalogYuklendi && r === _katalogRev) return;   // değişmemiş → yeniden indirme YOK
-        return firebase.database().ref('katalog/urunler').once('value').then(function (snap) {
+        return katRef('urunler').once('value').then(function (snap) {
             _katalog = [];
             snap.forEach(function (c) { var v = c.val() || {}; v._id = c.key; _katalog.push(v); });
             _katalog.sort(function (a, b) { return (b.eklendi || 0) - (a.eklendi || 0); });
@@ -1692,11 +1695,11 @@ function katalogSiparisVer() {
             tarih: bugun, ts: firebase.database.ServerValue.TIMESTAMP, toplam: fisYuan(urunlerY),
             urunler: secili.map(function (u) { return { img: u.img || null, fiyat: u.fiyat || 0, gram: u.gram || 0, gb: u.gb || 1, adet: _katalogSepet[u._id] }; })
         };
-        firebase.database().ref('katalog/siparisler').push(sipOzet);
+        katRef('siparisler').push(sipOzet);
         var updates = {};
         secili.forEach(function (u) { updates['urunler/' + u._id] = null; });
         updates['rev'] = firebase.database.ServerValue.TIMESTAMP;
-        firebase.database().ref('katalog').update(updates);
+        katRef().update(updates);
     } catch (e) {}
     // Yerelde de düş
     _katalog = _katalog.filter(function (u) { return !_katalogSepet[u._id]; });
@@ -2518,7 +2521,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 45');
+    L.push('Sürüm 46');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
