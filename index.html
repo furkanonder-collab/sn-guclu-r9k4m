@@ -183,7 +183,9 @@ body {
 .ay-ok { font-size: 20px; font-weight: 400; color: #475569; line-height: 1; }
 /* Katalog (tedarikçi vitrini) */
 .kat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.kat-card { background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.1); border-radius: 14px; overflow: hidden; }
+.kat-card { position: relative; background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.1); border-radius: 14px; overflow: hidden; }
+.kat-sil { position: absolute; top: 6px; right: 6px; z-index: 2; background: rgba(220,38,38,0.92); border: none; color: #fff; width: 34px; height: 34px; border-radius: 10px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.kat-sil:active { background: rgba(185,28,28,1); }
 .kat-card.secili { border-color: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.3); }
 .kat-card img { width: 100%; aspect-ratio: 3/4; object-fit: contain; background: #0b1120; display: block; }
 .kat-bilgi { padding: 10px; }
@@ -375,7 +377,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 48 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 49 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1065,7 +1067,8 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     var adet = u.adet || 0;
     var lineYuan = (u.fiyat || 0) * adet;
     var h = hesapla(u.gram, u.fiyat, u.gb || 1, k);
-    var satisToplam = h.ortGuclu * adet;
+    var birimSatis = (u.satis != null) ? u.satis : h.ortGuclu;   // katalogda elle girilen fiyat varsa onu kullan
+    var satisToplam = birimSatis * adet;
     // Sipariş detayında (fisId != null) fotoğraf BÜYÜK gösterilir: solda dikey foto,
     // bilgiler sağda. Sepette eski kompakt düzen aynen korunur (liste kısa kalsın).
     var buyuk = (fisId != null);
@@ -1087,7 +1090,7 @@ function urunKartHtml(u, i, k, editable, silOnclick, fisId) {
     var s = buyuk
         ? '<div class="urun-item foto-buyuk"><div class="urun-ust">' + foto + '<div class="urun-sag"><div class="urun-head">' + bilgi + '</div>' + adetRow + '</div></div>'
         : '<div class="urun-item"><div class="urun-head">' + foto + bilgi + '</div>' + adetRow;
-    s += '<div class="satis-row"><span>Satış birim <b>₺' + f(h.ortGuclu) + '</b></span><span>' + (adet > 0 ? 'Toplam <b>₺' + f(satisToplam) + '</b>' : '') + '</span></div>';
+    s += '<div class="satis-row"><span>Satış birim <b>₺' + f(birimSatis) + '</b></span><span>' + (adet > 0 ? 'Toplam <b>₺' + f(satisToplam) + '</b>' : '') + '</span></div>';
     if (fisId != null) {
         var _gd = urunGeldiDurum(u);
         // id="ug-N": _urunKartTazele bu bölümü YERİNDE günceller (tüm fişi yeniden çizmemek için)
@@ -1639,6 +1642,14 @@ function katRef(p) { var b = 'users/' + (_user && _user.uid) + '/katalog'; retur
 function katSatisHesap(u) { try { return Math.round(hesapla(u.gram || 0, u.fiyat || 0, u.gb || 1, getKurlar()).ortGuclu); } catch (e) { return 0; } }
 function katFiyat(u) { return (u._id in _katalogFiyat) ? _katalogFiyat[u._id] : katSatisHesap(u); }
 function katFiyatYaz(id, val) { var n = parseFloat(val); if (isNaN(n) || n < 0) delete _katalogFiyat[id]; else _katalogFiyat[id] = n; }
+// Katalogdan ürünü tamamen sil (paylaşımlı → tedarikçide de kalkar)
+function katalogUrunSil(id) {
+    if (!confirm('Bu ürünü katalogdan tamamen sil?\n(Tedarikçinin kataloğundan da kalkar.)')) return;
+    try { katRef('urunler/' + id).remove(); katRef('rev').set(firebase.database.ServerValue.TIMESTAMP); } catch (e) {}
+    _katalog = _katalog.filter(function (u) { return u._id !== id; });
+    delete _katalogSepet[id]; delete _katalogFiyat[id];
+    katalogRender();
+}
 function katalogAc() { katalogRender(); katalogYukle(); }
 function katalogYukle() {
     if (typeof firebase === 'undefined' || !firebase.database || !_user) return;
@@ -1689,6 +1700,7 @@ function katalogRender() {
         var u = _katalog[i], a = _katalogSepet[u._id] || 0;
         var sp = katFiyat(u);
         h += '<div class="kat-card' + (a ? ' secili' : '') + '" id="kc-' + u._id + '">' +
+            '<button class="kat-sil" onclick="katalogUrunSil(\'' + u._id + '\')">🗑️</button>' +
             '<img src="' + (u.img || '') + '">' +
             '<div class="kat-bilgi">' +
             '<div class="kat-ust"><span class="kat-fiyat">¥' + (u.fiyat || 0) + '</span><span class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · dz' : '') + '</span></div>' +
@@ -1709,7 +1721,7 @@ function katalogSiparisVer() {
     var bugun = new Date().toLocaleDateString('tr-TR');
     // Fiş ürünleri — DİKKAT: fiş ürününe uid VERME (kanonik json bozulur, tüm siparişler yeniden yüklenir)
     var urunlerY = secili.map(function (u) {
-        return { gram: u.gram || 0, fiyat: u.fiyat || 0, adet: _katalogSepet[u._id], gb: u.gb || 1, img: u.img || null };
+        return { gram: u.gram || 0, fiyat: u.fiyat || 0, adet: _katalogSepet[u._id], gb: u.gb || 1, img: u.img || null, satis: katFiyat(u) };
     });
     var yeniId = Date.now();
     fisler.push({
@@ -2549,7 +2561,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 48');
+    L.push('Sürüm 49');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
