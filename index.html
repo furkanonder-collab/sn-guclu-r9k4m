@@ -186,10 +186,16 @@ body {
 .kat-card { background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.1); border-radius: 14px; overflow: hidden; }
 .kat-card.secili { border-color: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.3); }
 .kat-card img { width: 100%; aspect-ratio: 3/4; object-fit: contain; background: #0b1120; display: block; }
-.kat-bilgi { padding: 8px 10px; }
-.kat-fiyat { font-size: 15px; font-weight: 800; color: #fbbf24; }
-.kat-gram { font-size: 11px; color: #94a3b8; margin-top: 1px; }
-.kat-not { font-size: 11px; color: #cbd5e1; margin-top: 3px; word-break: break-word; }
+.kat-bilgi { padding: 10px; }
+.kat-ust { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.kat-fiyat { font-size: 20px; font-weight: 800; color: #fbbf24; }
+.kat-gram { font-size: 14px; font-weight: 700; color: #cbd5e1; white-space: nowrap; }
+.kat-not { font-size: 11px; color: #94a3b8; margin-top: 3px; word-break: break-word; }
+.kat-satis { display: flex; align-items: center; gap: 6px; margin-top: 8px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25); border-radius: 9px; padding: 5px 8px; }
+.kat-satis-lbl { font-size: 11px; font-weight: 700; color: #c4b5fd; white-space: nowrap; }
+.kat-satis-in { flex: 1; min-width: 0; text-align: right; font-size: 17px; font-weight: 800; color: #ede9fe; background: transparent; border: none; -webkit-appearance: none; padding: 0; }
+.kat-satis-in:focus { outline: none; }
+.kat-satis-in::-webkit-outer-spin-button, .kat-satis-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .kat-adet { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .kat-adet button { width: 32px; height: 32px; border-radius: 9px; border: none; font-size: 19px; font-weight: 800; cursor: pointer; background: rgba(148,163,184,0.15); color: #e2e8f0; display: flex; align-items: center; justify-content: center; }
 .kat-adet button.art { background: rgba(52,211,153,0.2); color: #34d399; }
@@ -369,7 +375,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 47 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 48 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -1625,10 +1631,14 @@ function tabGoster(t) {
 }
 
 // ===== KATALOG (tedarikçi vitrini) — Firebase katalog/urunler'den oku, seç, sipariş ver =====
-var _katalog = [], _katalogSepet = {}, _katalogRev = null, _katalogYuklendi = false;
+var _katalog = [], _katalogSepet = {}, _katalogFiyat = {}, _katalogRev = null, _katalogYuklendi = false;
 // Katalog AYNI hesabın altında tutulur (users/{uid}/katalog) → ayrı güvenlik kuralı GEREKMEZ.
 // Tedarikçi de aynı hesapla girip ürün ekler; ana senkron (fisler/meta/rev) bu düğüme dokunmaz.
 function katRef(p) { var b = 'users/' + (_user && _user.uid) + '/katalog'; return firebase.database().ref(p ? b + '/' + p : b); }
+// Satış fiyatı (₺) = ana ekrandaki hesapla(...).ortGuclu. Kullanıcı kutudan değiştirebilir; değişikse onu kullan.
+function katSatisHesap(u) { try { return Math.round(hesapla(u.gram || 0, u.fiyat || 0, u.gb || 1, getKurlar()).ortGuclu); } catch (e) { return 0; } }
+function katFiyat(u) { return (u._id in _katalogFiyat) ? _katalogFiyat[u._id] : katSatisHesap(u); }
+function katFiyatYaz(id, val) { var n = parseFloat(val); if (isNaN(n) || n < 0) delete _katalogFiyat[id]; else _katalogFiyat[id] = n; }
 function katalogAc() { katalogRender(); katalogYukle(); }
 function katalogYukle() {
     if (typeof firebase === 'undefined' || !firebase.database || !_user) return;
@@ -1677,11 +1687,13 @@ function katalogRender() {
     var h = '<div class="kat-siparis-bar"><button onclick="katalogSiparisVer()"' + (secN ? '' : ' disabled') + '>🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : '') + '</button></div><div class="kat-grid">';
     for (var i = 0; i < _katalog.length; i++) {
         var u = _katalog[i], a = _katalogSepet[u._id] || 0;
+        var sp = katFiyat(u);
         h += '<div class="kat-card' + (a ? ' secili' : '') + '" id="kc-' + u._id + '">' +
             '<img src="' + (u.img || '') + '">' +
-            '<div class="kat-bilgi"><div class="kat-fiyat">¥' + (u.fiyat || 0) + '</div>' +
-            '<div class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · düzine' : '') + '</div>' +
+            '<div class="kat-bilgi">' +
+            '<div class="kat-ust"><span class="kat-fiyat">¥' + (u.fiyat || 0) + '</span><span class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · dz' : '') + '</span></div>' +
             (u.aciklama ? '<div class="kat-not">' + escapeHtml(u.aciklama) + '</div>' : '') +
+            '<div class="kat-satis"><span class="kat-satis-lbl">Satış ₺</span><input class="kat-satis-in" type="number" inputmode="decimal" min="0" value="' + sp + '" onclick="this.select()" oninput="katFiyatYaz(\'' + u._id + '\',this.value)"></div>' +
             '<div class="kat-adet"><button onclick="katAdim(\'' + u._id + '\',-1)">−</button><input id="ki-' + u._id + '" class="kat-say" type="number" inputmode="numeric" min="0" value="' + (a || '') + '" placeholder="0" onclick="this.select()" oninput="katYaz(\'' + u._id + '\',this.value)"><button class="art" onclick="katAdim(\'' + u._id + '\',1)">+</button></div>' +
             '</div></div>';
     }
@@ -1709,7 +1721,7 @@ function katalogSiparisVer() {
     try {
         var sipOzet = {
             tarih: bugun, ts: firebase.database.ServerValue.TIMESTAMP, toplam: fisYuan(urunlerY),
-            urunler: secili.map(function (u) { return { img: u.img || null, fiyat: u.fiyat || 0, gram: u.gram || 0, gb: u.gb || 1, adet: _katalogSepet[u._id] }; })
+            urunler: secili.map(function (u) { return { img: u.img || null, fiyat: u.fiyat || 0, gram: u.gram || 0, gb: u.gb || 1, adet: _katalogSepet[u._id], satis: katFiyat(u) }; })
         };
         katRef('siparisler').push(sipOzet);
         var updates = {};
@@ -1719,7 +1731,7 @@ function katalogSiparisVer() {
     } catch (e) {}
     // Yerelde de düş
     _katalog = _katalog.filter(function (u) { return !_katalogSepet[u._id]; });
-    _katalogSepet = {}; _katalogRev = null; _katalogYuklendi = false;
+    _katalogSepet = {}; _katalogFiyat = {}; _katalogRev = null; _katalogYuklendi = false;
     tabRozetGuncelle();
     alert('✅ Sipariş verildi: ' + secili.length + ' çeşit · ' + secN + ' adet.\nSiparişlerine "Verildi" olarak eklendi.');
     tabGoster('siparisler');
@@ -2537,7 +2549,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 47');
+    L.push('Sürüm 48');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
