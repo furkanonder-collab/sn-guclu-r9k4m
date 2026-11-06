@@ -181,16 +181,19 @@ body {
 .ay-card { border-color: rgba(59,130,246,0.25); }
 .ay-rozet { font-size: 10px; font-weight: 800; padding: 1px 8px; border-radius: 999px; margin-left: 6px; background: rgba(59,130,246,0.18); color: #93c5fd; white-space: nowrap; }
 .ay-ok { font-size: 20px; font-weight: 400; color: #475569; line-height: 1; }
-/* Hesap makinesi */
-.hesap-wrap { max-width: 420px; margin: 8px auto 0; }
-.hesap-ekran { background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.15); border-radius: 16px; padding: 20px 18px; font-size: 32px; font-weight: 700; color: #f1f5f9; text-align: right; white-space: nowrap; overflow: hidden; margin-bottom: 12px; min-height: 76px; display: flex; align-items: center; justify-content: flex-end; }
-.hesap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.hb { border: none; border-radius: 16px; padding: 20px 0; font-size: 22px; font-weight: 700; cursor: pointer; background: rgba(51,65,85,0.6); color: #e2e8f0; transition: transform 0.08s, filter 0.12s; }
-.hb:active { transform: scale(0.95); filter: brightness(1.3); }
-.hb-fn { background: rgba(148,163,184,0.2); color: #cbd5e1; }
-.hb-op { background: rgba(59,130,246,0.25); color: #93c5fd; }
-.hb-es { background: linear-gradient(135deg,#10b981,#059669); color: #fff; }
-.hb-0 { grid-column: span 2; }
+/* Hesap makinesi (iPhone tarzı) */
+.hesap-wrap { max-width: 400px; margin: 4px auto 0; }
+.hesap-ekran { position: relative; padding: 10px 8px 14px; text-align: right; min-height: 130px; display: flex; flex-direction: column; justify-content: flex-end; }
+.hesap-ifade { font-size: 22px; color: #8e8e93; min-height: 30px; white-space: nowrap; overflow: hidden; }
+.hesap-sonuc { font-size: 60px; font-weight: 300; color: #fff; line-height: 1.1; white-space: nowrap; overflow: hidden; letter-spacing: -1px; }
+.hesap-sil { position: absolute; top: 4px; left: 2px; background: none; border: none; color: #8e8e93; font-size: 24px; padding: 6px 10px; cursor: pointer; }
+.hesap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.hb { aspect-ratio: 1; border: none; border-radius: 50%; font-size: 30px; font-weight: 500; cursor: pointer; background: #333336; color: #fff; display: flex; align-items: center; justify-content: center; transition: filter 0.1s; -webkit-user-select: none; user-select: none; }
+.hb:active { filter: brightness(1.6); }
+.hb-fn { background: #a5a5a5; color: #000; font-size: 26px; }
+.hb-op { background: #ff9f0a; color: #fff; font-size: 34px; }
+.hb-op.secili { background: #fff; color: #ff9f0a; }
+.hb-0 { grid-column: span 2; aspect-ratio: auto; border-radius: 999px; justify-content: flex-start; padding-left: 13%; }
 .filtre-bar { display: flex; gap: 6px; margin-bottom: 12px; }
 .fbtn { flex: 1; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.15); color: #94a3b8; font-size: 12px; font-weight: 700; padding: 8px 5px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .fbtn.aktif { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
@@ -367,7 +370,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 51 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 52 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -419,27 +422,31 @@ body {
 <!-- ============ HESAP MAKİNESİ ============ -->
 <div id="view-hesap" style="display:none">
     <div class="hesap-wrap">
-        <div class="hesap-ekran" id="hesapEkran">0</div>
+        <div class="hesap-ekran">
+            <button class="hesap-sil" onclick="hesapBas('⌫')" title="Son rakamı sil">⌫</button>
+            <div class="hesap-ifade" id="hesapIfade"></div>
+            <div class="hesap-sonuc" id="hesapEkran">0</div>
+        </div>
         <div class="hesap-grid">
-            <button class="hb hb-fn" onclick="hesapBas('C')">C</button>
-            <button class="hb hb-fn" onclick="hesapBas('⌫')">⌫</button>
+            <button class="hb hb-fn" onclick="hesapBas('C')">AC</button>
+            <button class="hb hb-fn" onclick="hesapBas('±')">+/−</button>
             <button class="hb hb-fn" onclick="hesapBas('%')">%</button>
-            <button class="hb hb-op" onclick="hesapBas('÷')">÷</button>
+            <button class="hb hb-op" data-op="÷" onclick="hesapBas('÷')">÷</button>
             <button class="hb" onclick="hesapBas('7')">7</button>
             <button class="hb" onclick="hesapBas('8')">8</button>
             <button class="hb" onclick="hesapBas('9')">9</button>
-            <button class="hb hb-op" onclick="hesapBas('×')">×</button>
+            <button class="hb hb-op" data-op="×" onclick="hesapBas('×')">×</button>
             <button class="hb" onclick="hesapBas('4')">4</button>
             <button class="hb" onclick="hesapBas('5')">5</button>
             <button class="hb" onclick="hesapBas('6')">6</button>
-            <button class="hb hb-op" onclick="hesapBas('−')">−</button>
+            <button class="hb hb-op" data-op="−" onclick="hesapBas('−')">−</button>
             <button class="hb" onclick="hesapBas('1')">1</button>
             <button class="hb" onclick="hesapBas('2')">2</button>
             <button class="hb" onclick="hesapBas('3')">3</button>
-            <button class="hb hb-op" onclick="hesapBas('+')">+</button>
+            <button class="hb hb-op" data-op="+" onclick="hesapBas('+')">+</button>
             <button class="hb hb-0" onclick="hesapBas('0')">0</button>
             <button class="hb" onclick="hesapBas('.')">,</button>
-            <button class="hb hb-es" onclick="hesapBas('=')">=</button>
+            <button class="hb hb-op" onclick="hesapBas('=')">=</button>
         </div>
     </div>
 </div>
@@ -1646,50 +1653,94 @@ function tabGoster(t) {
     window.scrollTo(0, 0);
 }
 
-// ===== HESAP MAKİNESİ (basit aritmetik) =====
-var _hesapIfade = '', _hesapSonuc = false;
-function hesapEkranGuncelle() {
-    var el = document.getElementById('hesapEkran');
-    if (el) el.textContent = (_hesapIfade || '0').replace(/\./g, ',');   // Türkçe: ondalık virgül göster
+// ===== HESAP MAKİNESİ (iPhone tarzı: üstte yapılan işlem, altta büyük canlı sonuç) =====
+var _hesapIfade = '', _hesapSonuc = false, _hesapGecmis = '';
+var HESAP_OPS = '÷×−+';
+function _hesapUnaryMi(s, i) { return s[i] === '−' && (i === 0 || HESAP_OPS.indexOf(s[i - 1]) >= 0); }
+function hesapGuzel(s) {            // ekranda: ondalık virgül + işlemlerin etrafında boşluk
+    var o = '';
+    for (var i = 0; i < s.length; i++) {
+        var c = s[i];
+        if (HESAP_OPS.indexOf(c) >= 0 && !_hesapUnaryMi(s, i)) o += ' ' + c + ' ';
+        else o += (c === '.' ? ',' : c);
+    }
+    return o;
 }
+function hesapSayiBicim(n) { return n.toLocaleString('tr-TR', { maximumFractionDigits: 8 }).replace('-', '−'); }
+// İfadeyi hesapla. Sondaki YARIM işlem (5+ gibi) yok sayılır — eskiden "Hata" veriyordu. Olmazsa null.
+function hesapDegerle(s) {
+    s = s.replace(/[÷×−+.]+$/, '');
+    if (!s) return null;
+    var e = '';
+    for (var i = 0; i < s.length; i++) {
+        var c = s[i];
+        // işlemler boşluklu: "5−−3" → "5 -  - 3" (yoksa JS "--" azaltma operatörü sanar)
+        e += c === '×' ? ' * ' : c === '÷' ? ' / ' : c === '+' ? ' + ' : c === '−' ? ' - ' : c;
+    }
+    e = e.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');            // 5% → (5/100)
+    if (!/^[0-9+\-*/.() ]*$/.test(e)) return null;             // sadece rakam ve işlem
+    try {
+        var r = Function('"use strict"; return (' + e + ')')();
+        if (typeof r !== 'number' || !isFinite(r)) return null;
+        return Math.round((r + Number.EPSILON) * 1e8) / 1e8;   // kayan nokta artığını temizle
+    } catch (err) { return null; }
+}
+function hesapEkranGuncelle() {
+    var ust = document.getElementById('hesapIfade'), alt = document.getElementById('hesapEkran');
+    if (!alt) return;
+    var ustT, altT;
+    if (_hesapIfade === 'Hata') { ustT = _hesapGecmis; altT = 'Hata'; }
+    else if (_hesapSonuc) { ustT = _hesapGecmis; altT = hesapSayiBicim(hesapDegerle(_hesapIfade) || 0); }
+    else {
+        ustT = hesapGuzel(_hesapIfade);
+        var v = hesapDegerle(_hesapIfade);
+        altT = v === null ? '0' : hesapSayiBicim(v);
+    }
+    if (ust) ust.textContent = ustT || '';
+    alt.textContent = altT;
+    alt.style.fontSize = altT.length > 12 ? '34px' : altT.length > 9 ? '44px' : '';
+    var son = _hesapIfade.slice(-1);                            // bekleyen işlem tuşu beyaz yansın (iPhone gibi)
+    [].forEach.call(document.querySelectorAll('#view-hesap .hb-op[data-op]'), function (bt) {
+        bt.classList.toggle('secili', !_hesapSonuc && bt.getAttribute('data-op') === son);
+    });
+}
+function _hesapSifirla() { _hesapIfade = ''; _hesapSonuc = false; _hesapGecmis = ''; }
 function hesapBas(ch) {
-    if (_hesapIfade === 'Hata') { _hesapIfade = ''; _hesapSonuc = false; }
-    if (ch === 'C') { _hesapIfade = ''; _hesapSonuc = false; hesapEkranGuncelle(); return; }
-    if (ch === '⌫') { _hesapIfade = _hesapIfade.slice(0, -1); _hesapSonuc = false; hesapEkranGuncelle(); return; }
+    if (_hesapIfade === 'Hata') _hesapSifirla();
     if (ch === '=') { hesapEsittir(); return; }
-    var ops = '÷×−+', sayi = '0123456789';
-    if (sayi.indexOf(ch) >= 0) {
-        if (_hesapSonuc) { _hesapIfade = ''; _hesapSonuc = false; }
+    if (ch === 'C') _hesapSifirla();
+    else if (ch === '⌫') { _hesapIfade = _hesapIfade.slice(0, -1); _hesapSonuc = false; _hesapGecmis = ''; }
+    else if ('0123456789'.indexOf(ch) >= 0) {
+        if (_hesapSonuc) _hesapSifirla();                      // sonuçtan sonra rakam = yeni hesap
+        if (_hesapIfade.slice(-1) === '%') _hesapIfade += '×'; // 5% 3 → 5% × 3
         _hesapIfade += ch;
     } else if (ch === '.') {
-        if (_hesapSonuc) { _hesapIfade = '0'; _hesapSonuc = false; }
+        if (_hesapSonuc) _hesapSifirla();
         var seg = _hesapIfade.split(/[÷×−+%]/).pop();
-        if (seg.indexOf('.') >= 0) { hesapEkranGuncelle(); return; }
-        if (!_hesapIfade || ops.indexOf(_hesapIfade.slice(-1)) >= 0) _hesapIfade += '0.'; else _hesapIfade += '.';
-    } else if (ops.indexOf(ch) >= 0) {
-        _hesapSonuc = false;
-        if (!_hesapIfade) { if (ch === '−') _hesapIfade = '−'; hesapEkranGuncelle(); return; }
-        var son = _hesapIfade.slice(-1);
-        if (ops.indexOf(son) >= 0) _hesapIfade = _hesapIfade.slice(0, -1) + ch; else _hesapIfade += ch;
+        if (seg.indexOf('.') < 0) _hesapIfade += (seg === '' ? '0.' : '.');
+    } else if (HESAP_OPS.indexOf(ch) >= 0) {
+        _hesapSonuc = false; _hesapGecmis = '';                 // sonuçtan sonra işlem = sonuçla devam
+        var tab = _hesapIfade.replace(/\.$/, '').replace(/[÷×−+]+$/, '');
+        _hesapIfade = tab ? tab + ch : (ch === '−' ? '−' : ''); // art arda işlem: sonuncusu geçerli
     } else if (ch === '%') {
-        _hesapSonuc = false;
-        var l = _hesapIfade.slice(-1);
-        if (_hesapIfade && sayi.indexOf(l) >= 0) _hesapIfade += '%';
+        _hesapSonuc = false; _hesapGecmis = '';
+        if (/[0-9.]$/.test(_hesapIfade)) _hesapIfade = _hesapIfade.replace(/\.$/, '') + '%';
+    } else if (ch === '±') {                                   // son sayının işaretini çevir
+        _hesapSonuc = false; _hesapGecmis = '';
+        var m = _hesapIfade.match(/(\d+(?:\.\d*)?%?)$/);
+        if (m) {
+            var i = _hesapIfade.length - m[1].length, s = _hesapIfade;
+            _hesapIfade = (i > 0 && _hesapUnaryMi(s, i - 1)) ? s.slice(0, i - 1) + s.slice(i) : s.slice(0, i) + '−' + s.slice(i);
+        }
     }
     hesapEkranGuncelle();
 }
 function hesapEsittir() {
-    if (!_hesapIfade) return;
-    var e = _hesapIfade.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
-    e = e.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');       // 5% -> (5/100)
-    if (!/^[0-9+\-*/.() ]*$/.test(e)) { _hesapIfade = 'Hata'; _hesapSonuc = true; hesapEkranGuncelle(); return; }
-    try {
-        var r = Function('"use strict"; return (' + e + ')')();
-        if (typeof r !== 'number' || !isFinite(r)) throw 0;
-        r = Math.round((r + Number.EPSILON) * 1e6) / 1e6;   // kayan nokta artığını temizle
-        _hesapIfade = String(r);
-        _hesapSonuc = true;
-    } catch (err) { _hesapIfade = 'Hata'; _hesapSonuc = true; }
+    if (!_hesapIfade || _hesapSonuc) return;
+    var v = hesapDegerle(_hesapIfade);
+    _hesapGecmis = hesapGuzel(_hesapIfade.replace(/[÷×−+.]+$/, '')) + ' =';
+    _hesapIfade = v === null ? 'Hata' : String(v).replace('-', '−');
+    _hesapSonuc = true;
     hesapEkranGuncelle();
 }
 
@@ -2505,7 +2556,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 51');
+    L.push('Sürüm 52');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
