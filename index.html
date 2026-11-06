@@ -207,6 +207,16 @@ body {
 .kat-siparis-bar { position: sticky; top: 6px; z-index: 10; margin-bottom: 12px; }
 .kat-siparis-bar button { width: 100%; background: linear-gradient(135deg,#10b981,#059669); border: none; color: #fff; border-radius: 12px; padding: 15px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(16,185,129,0.4); }
 .kat-siparis-bar button:disabled { opacity: 0.4; box-shadow: none; }
+/* Hesap makinesi */
+.hesap-wrap { max-width: 420px; margin: 8px auto 0; }
+.hesap-ekran { background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.15); border-radius: 16px; padding: 20px 18px; font-size: 32px; font-weight: 700; color: #f1f5f9; text-align: right; white-space: nowrap; overflow: hidden; margin-bottom: 12px; min-height: 76px; display: flex; align-items: center; justify-content: flex-end; }
+.hesap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.hb { border: none; border-radius: 16px; padding: 20px 0; font-size: 22px; font-weight: 700; cursor: pointer; background: rgba(51,65,85,0.6); color: #e2e8f0; transition: transform 0.08s, filter 0.12s; }
+.hb:active { transform: scale(0.95); filter: brightness(1.3); }
+.hb-fn { background: rgba(148,163,184,0.2); color: #cbd5e1; }
+.hb-op { background: rgba(59,130,246,0.25); color: #93c5fd; }
+.hb-es { background: linear-gradient(135deg,#10b981,#059669); color: #fff; }
+.hb-0 { grid-column: span 2; }
 .filtre-bar { display: flex; gap: 6px; margin-bottom: 12px; }
 .fbtn { flex: 1; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.15); color: #94a3b8; font-size: 12px; font-weight: 700; padding: 8px 5px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .fbtn.aktif { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.45); color: #93c5fd; }
@@ -377,7 +387,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 49 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 50 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -431,6 +441,34 @@ body {
     <div id="katalogList"></div>
 </div>
 
+<!-- ============ HESAP MAKİNESİ ============ -->
+<div id="view-hesap" style="display:none">
+    <div class="hesap-wrap">
+        <div class="hesap-ekran" id="hesapEkran">0</div>
+        <div class="hesap-grid">
+            <button class="hb hb-fn" onclick="hesapBas('C')">C</button>
+            <button class="hb hb-fn" onclick="hesapBas('⌫')">⌫</button>
+            <button class="hb hb-fn" onclick="hesapBas('%')">%</button>
+            <button class="hb hb-op" onclick="hesapBas('÷')">÷</button>
+            <button class="hb" onclick="hesapBas('7')">7</button>
+            <button class="hb" onclick="hesapBas('8')">8</button>
+            <button class="hb" onclick="hesapBas('9')">9</button>
+            <button class="hb hb-op" onclick="hesapBas('×')">×</button>
+            <button class="hb" onclick="hesapBas('4')">4</button>
+            <button class="hb" onclick="hesapBas('5')">5</button>
+            <button class="hb" onclick="hesapBas('6')">6</button>
+            <button class="hb hb-op" onclick="hesapBas('−')">−</button>
+            <button class="hb" onclick="hesapBas('1')">1</button>
+            <button class="hb" onclick="hesapBas('2')">2</button>
+            <button class="hb" onclick="hesapBas('3')">3</button>
+            <button class="hb hb-op" onclick="hesapBas('+')">+</button>
+            <button class="hb hb-0" onclick="hesapBas('0')">0</button>
+            <button class="hb" onclick="hesapBas('.')">,</button>
+            <button class="hb hb-es" onclick="hesapBas('=')">=</button>
+        </div>
+    </div>
+</div>
+
 <!-- NOT: "Gelenler" sekmesi KALDIRILDI (v38). Ürünlerin gelme takibi zaten siparişin
      içinde yapılıyordu; o sekme aynı ürünleri yine sipariş adına göre gruplayıp
      TÜM fotoğrafları (yüzlerce, ~23 MB) tek sayfaya basıyordu. Yerine sipariş
@@ -442,6 +480,7 @@ body {
     <button id="tab-fis" onclick="tabGoster('fis')"><span class="ico">🧾</span><span id="tabFisEt">Fiş</span></button>
     <button id="tab-katalog" onclick="tabGoster('katalog')"><span class="ico">📦</span><span>Katalog</span></button>
     <button id="tab-siparisler" onclick="tabGoster('siparisler')"><span class="ico">📋</span><span id="tabSiparisEt">Siparişler</span></button>
+    <button id="tab-hesap" onclick="tabGoster('hesap')"><span class="ico">🧮</span><span>Hesap</span></button>
 </nav>
 
 <input type="file" accept="image/*" capture="environment" id="fotoInput" style="display:none" onchange="fotoYuklendi(this)">
@@ -1623,14 +1662,64 @@ function tabGoster(t) {
     document.getElementById('view-fis').style.display = (t === 'fis') ? 'block' : 'none';
     document.getElementById('view-siparisler').style.display = (t === 'siparisler') ? 'block' : 'none';
     document.getElementById('view-katalog').style.display = (t === 'katalog') ? 'block' : 'none';
+    document.getElementById('view-hesap').style.display = (t === 'hesap') ? 'block' : 'none';
     document.getElementById('tab-urun').classList.toggle('aktif', t === 'urun');
     document.getElementById('tab-fis').classList.toggle('aktif', t === 'fis');
     document.getElementById('tab-siparisler').classList.toggle('aktif', t === 'siparisler');
     document.getElementById('tab-katalog').classList.toggle('aktif', t === 'katalog');
+    document.getElementById('tab-hesap').classList.toggle('aktif', t === 'hesap');
     if (t === 'fis') renderFis();
     if (t === 'siparisler') { _acikAy = null; fisGeri(); }
     if (t === 'katalog') katalogAc();
+    if (t === 'hesap') hesapEkranGuncelle();
     window.scrollTo(0, 0);
+}
+
+// ===== HESAP MAKİNESİ (basit aritmetik) =====
+var _hesapIfade = '', _hesapSonuc = false;
+function hesapEkranGuncelle() {
+    var el = document.getElementById('hesapEkran');
+    if (el) el.textContent = (_hesapIfade || '0').replace(/\./g, ',');   // Türkçe: ondalık virgül göster
+}
+function hesapBas(ch) {
+    if (_hesapIfade === 'Hata') { _hesapIfade = ''; _hesapSonuc = false; }
+    if (ch === 'C') { _hesapIfade = ''; _hesapSonuc = false; hesapEkranGuncelle(); return; }
+    if (ch === '⌫') { _hesapIfade = _hesapIfade.slice(0, -1); _hesapSonuc = false; hesapEkranGuncelle(); return; }
+    if (ch === '=') { hesapEsittir(); return; }
+    var ops = '÷×−+', sayi = '0123456789';
+    if (sayi.indexOf(ch) >= 0) {
+        if (_hesapSonuc) { _hesapIfade = ''; _hesapSonuc = false; }
+        _hesapIfade += ch;
+    } else if (ch === '.') {
+        if (_hesapSonuc) { _hesapIfade = '0'; _hesapSonuc = false; }
+        var seg = _hesapIfade.split(/[÷×−+%]/).pop();
+        if (seg.indexOf('.') >= 0) { hesapEkranGuncelle(); return; }
+        if (!_hesapIfade || ops.indexOf(_hesapIfade.slice(-1)) >= 0) _hesapIfade += '0.'; else _hesapIfade += '.';
+    } else if (ops.indexOf(ch) >= 0) {
+        _hesapSonuc = false;
+        if (!_hesapIfade) { if (ch === '−') _hesapIfade = '−'; hesapEkranGuncelle(); return; }
+        var son = _hesapIfade.slice(-1);
+        if (ops.indexOf(son) >= 0) _hesapIfade = _hesapIfade.slice(0, -1) + ch; else _hesapIfade += ch;
+    } else if (ch === '%') {
+        _hesapSonuc = false;
+        var l = _hesapIfade.slice(-1);
+        if (_hesapIfade && sayi.indexOf(l) >= 0) _hesapIfade += '%';
+    }
+    hesapEkranGuncelle();
+}
+function hesapEsittir() {
+    if (!_hesapIfade) return;
+    var e = _hesapIfade.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-');
+    e = e.replace(/(\d+(?:\.\d+)?)%/g, '($1/100)');       // 5% -> (5/100)
+    if (!/^[0-9+\-*/.() ]*$/.test(e)) { _hesapIfade = 'Hata'; _hesapSonuc = true; hesapEkranGuncelle(); return; }
+    try {
+        var r = Function('"use strict"; return (' + e + ')')();
+        if (typeof r !== 'number' || !isFinite(r)) throw 0;
+        r = Math.round((r + Number.EPSILON) * 1e6) / 1e6;   // kayan nokta artığını temizle
+        _hesapIfade = String(r);
+        _hesapSonuc = true;
+    } catch (err) { _hesapIfade = 'Hata'; _hesapSonuc = true; }
+    hesapEkranGuncelle();
 }
 
 // ===== KATALOG (tedarikçi vitrini) — Firebase katalog/urunler'den oku, seç, sipariş ver =====
@@ -2561,7 +2650,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 49');
+    L.push('Sürüm 50');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
