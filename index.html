@@ -181,32 +181,6 @@ body {
 .ay-card { border-color: rgba(59,130,246,0.25); }
 .ay-rozet { font-size: 10px; font-weight: 800; padding: 1px 8px; border-radius: 999px; margin-left: 6px; background: rgba(59,130,246,0.18); color: #93c5fd; white-space: nowrap; }
 .ay-ok { font-size: 20px; font-weight: 400; color: #475569; line-height: 1; }
-/* Katalog (tedarikçi vitrini) */
-.kat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.kat-card { position: relative; background: rgba(15,23,42,0.85); border: 1px solid rgba(148,163,184,0.1); border-radius: 14px; overflow: hidden; }
-.kat-sil { position: absolute; top: 6px; right: 6px; z-index: 2; background: rgba(220,38,38,0.92); border: none; color: #fff; width: 34px; height: 34px; border-radius: 10px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.kat-sil:active { background: rgba(185,28,28,1); }
-.kat-card.secili { border-color: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.3); }
-.kat-card img { width: 100%; aspect-ratio: 3/4; object-fit: contain; background: #0b1120; display: block; }
-.kat-bilgi { padding: 10px; }
-.kat-ust { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-.kat-fiyat { font-size: 20px; font-weight: 800; color: #fbbf24; }
-.kat-gram { font-size: 14px; font-weight: 700; color: #cbd5e1; white-space: nowrap; }
-.kat-not { font-size: 11px; color: #94a3b8; margin-top: 3px; word-break: break-word; }
-.kat-satis { display: flex; align-items: center; gap: 6px; margin-top: 8px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25); border-radius: 9px; padding: 5px 8px; }
-.kat-satis-lbl { font-size: 11px; font-weight: 700; color: #c4b5fd; white-space: nowrap; }
-.kat-satis-in { flex: 1; min-width: 0; text-align: right; font-size: 17px; font-weight: 800; color: #ede9fe; background: transparent; border: none; -webkit-appearance: none; padding: 0; }
-.kat-satis-in:focus { outline: none; }
-.kat-satis-in::-webkit-outer-spin-button, .kat-satis-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.kat-adet { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.kat-adet button { width: 32px; height: 32px; border-radius: 9px; border: none; font-size: 19px; font-weight: 800; cursor: pointer; background: rgba(148,163,184,0.15); color: #e2e8f0; display: flex; align-items: center; justify-content: center; }
-.kat-adet button.art { background: rgba(52,211,153,0.2); color: #34d399; }
-.kat-adet .kat-say { flex: 1; min-width: 0; text-align: center; font-size: 16px; font-weight: 800; color: #f1f5f9; background: #0b1120; border: 1.5px solid #1e293b; border-radius: 8px; padding: 6px 2px; -webkit-appearance: none; }
-.kat-adet .kat-say:focus { outline: none; border-color: #34d399; }
-.kat-adet .kat-say::-webkit-outer-spin-button, .kat-adet .kat-say::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.kat-siparis-bar { position: sticky; top: 6px; z-index: 10; margin-bottom: 12px; }
-.kat-siparis-bar button { width: 100%; background: linear-gradient(135deg,#10b981,#059669); border: none; color: #fff; border-radius: 12px; padding: 15px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 20px rgba(16,185,129,0.4); }
-.kat-siparis-bar button:disabled { opacity: 0.4; box-shadow: none; }
 /* Hesap makinesi */
 .hesap-wrap { max-width: 420px; margin: 8px auto 0; }
 .hesap-ekran { background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.15); border-radius: 16px; padding: 20px 18px; font-size: 32px; font-weight: 700; color: #f1f5f9; text-align: right; white-space: nowrap; overflow: hidden; margin-bottom: 12px; min-height: 76px; display: flex; align-items: center; justify-content: flex-end; }
@@ -279,6 +253,12 @@ body {
 .foto-modal.acik { display: flex; }
 .foto-modal img { max-width: 100%; max-height: 90vh; border-radius: 12px; }
 #fotoModalImg { transform-origin: center center; will-change: transform; }
+/* Bilgisayarda (geniş ekran) büyütülmüş resmi ekranı dolduracak kadar BÜYÜT.
+   Fotoğraflar 400px saklandığı için kendi boyutunda geniş ekranda çok küçük kalıyordu.
+   Oran korunur (contain); telefonda eski davranış aynen kalır. */
+@media (min-width: 700px) {
+    .foto-modal img { height: 90vh; width: auto; max-width: 95vw; object-fit: contain; }
+}
 .foto-nav { position: fixed; top: 50%; transform: translateY(-50%); width: 48px; height: 64px; border: none; background: rgba(255,255,255,0.14); color: #fff; font-size: 34px; line-height: 1; border-radius: 12px; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 101; }
 .foto-nav.sol { left: 10px; }
 .foto-nav.sag { right: 10px; }
@@ -387,7 +367,7 @@ body {
         <button onclick="guncelle()" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none;color:#fff;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">🔄 Güncelle (En son sürüme geç)</button>
         <button class="btn-yedek" onclick="baglantiTesti()" style="width:100%;margin-top:8px">🔧 Bağlantı Testi</button>
         <button class="btn-yedek" onclick="authCikis()" style="width:100%;margin-top:8px">🚪 Çıkış Yap</button>
-        <div class="surum-not">Sürüm 50 · Bulut senkron</div>
+        <div class="surum-not">Sürüm 51 · Bulut senkron</div>
     </div>
 
     <div class="card">
@@ -436,11 +416,6 @@ body {
     <div id="fisDetay" style="display:none"></div>
 </div>
 
-<!-- ============ KATALOG (tedarikçi vitrini) ============ -->
-<div id="view-katalog" style="display:none">
-    <div id="katalogList"></div>
-</div>
-
 <!-- ============ HESAP MAKİNESİ ============ -->
 <div id="view-hesap" style="display:none">
     <div class="hesap-wrap">
@@ -478,7 +453,6 @@ body {
 <nav class="tabbar">
     <button id="tab-urun" class="aktif" onclick="tabGoster('urun')"><span class="ico">➕</span><span>Ürün Ekle</span></button>
     <button id="tab-fis" onclick="tabGoster('fis')"><span class="ico">🧾</span><span id="tabFisEt">Fiş</span></button>
-    <button id="tab-katalog" onclick="tabGoster('katalog')"><span class="ico">📦</span><span>Katalog</span></button>
     <button id="tab-siparisler" onclick="tabGoster('siparisler')"><span class="ico">📋</span><span id="tabSiparisEt">Siparişler</span></button>
     <button id="tab-hesap" onclick="tabGoster('hesap')"><span class="ico">🧮</span><span>Hesap</span></button>
 </nav>
@@ -1661,16 +1635,13 @@ function tabGoster(t) {
     document.getElementById('view-urun').style.display = (t === 'urun') ? 'block' : 'none';
     document.getElementById('view-fis').style.display = (t === 'fis') ? 'block' : 'none';
     document.getElementById('view-siparisler').style.display = (t === 'siparisler') ? 'block' : 'none';
-    document.getElementById('view-katalog').style.display = (t === 'katalog') ? 'block' : 'none';
     document.getElementById('view-hesap').style.display = (t === 'hesap') ? 'block' : 'none';
     document.getElementById('tab-urun').classList.toggle('aktif', t === 'urun');
     document.getElementById('tab-fis').classList.toggle('aktif', t === 'fis');
     document.getElementById('tab-siparisler').classList.toggle('aktif', t === 'siparisler');
-    document.getElementById('tab-katalog').classList.toggle('aktif', t === 'katalog');
     document.getElementById('tab-hesap').classList.toggle('aktif', t === 'hesap');
     if (t === 'fis') renderFis();
     if (t === 'siparisler') { _acikAy = null; fisGeri(); }
-    if (t === 'katalog') katalogAc();
     if (t === 'hesap') hesapEkranGuncelle();
     window.scrollTo(0, 0);
 }
@@ -1722,122 +1693,6 @@ function hesapEsittir() {
     hesapEkranGuncelle();
 }
 
-// ===== KATALOG (tedarikçi vitrini) — Firebase katalog/urunler'den oku, seç, sipariş ver =====
-var _katalog = [], _katalogSepet = {}, _katalogFiyat = {}, _katalogRev = null, _katalogYuklendi = false;
-// Katalog AYNI hesabın altında tutulur (users/{uid}/katalog) → ayrı güvenlik kuralı GEREKMEZ.
-// Tedarikçi de aynı hesapla girip ürün ekler; ana senkron (fisler/meta/rev) bu düğüme dokunmaz.
-function katRef(p) { var b = 'users/' + (_user && _user.uid) + '/katalog'; return firebase.database().ref(p ? b + '/' + p : b); }
-// Satış fiyatı (₺) = ana ekrandaki hesapla(...).ortGuclu. Kullanıcı kutudan değiştirebilir; değişikse onu kullan.
-function katSatisHesap(u) { try { return Math.round(hesapla(u.gram || 0, u.fiyat || 0, u.gb || 1, getKurlar()).ortGuclu); } catch (e) { return 0; } }
-function katFiyat(u) { return (u._id in _katalogFiyat) ? _katalogFiyat[u._id] : katSatisHesap(u); }
-function katFiyatYaz(id, val) { var n = parseFloat(val); if (isNaN(n) || n < 0) delete _katalogFiyat[id]; else _katalogFiyat[id] = n; }
-// Katalogdan ürünü tamamen sil (paylaşımlı → tedarikçide de kalkar)
-function katalogUrunSil(id) {
-    if (!confirm('Bu ürünü katalogdan tamamen sil?\n(Tedarikçinin kataloğundan da kalkar.)')) return;
-    try { katRef('urunler/' + id).remove(); katRef('rev').set(firebase.database.ServerValue.TIMESTAMP); } catch (e) {}
-    _katalog = _katalog.filter(function (u) { return u._id !== id; });
-    delete _katalogSepet[id]; delete _katalogFiyat[id];
-    katalogRender();
-}
-function katalogAc() { katalogRender(); katalogYukle(); }
-function katalogYukle() {
-    if (typeof firebase === 'undefined' || !firebase.database || !_user) return;
-    katRef('rev').once('value').then(function (s) {
-        var r = s.val();
-        if (_katalogYuklendi && r === _katalogRev) return;   // değişmemiş → yeniden indirme YOK
-        return katRef('urunler').once('value').then(function (snap) {
-            _katalog = [];
-            snap.forEach(function (c) { var v = c.val() || {}; v._id = c.key; _katalog.push(v); });
-            _katalog.sort(function (a, b) { return (b.eklendi || 0) - (a.eklendi || 0); });
-            _katalogRev = r; _katalogYuklendi = true;
-            for (var k in _katalogSepet) { if (!_katalog.some(function (u) { return u._id === k; })) delete _katalogSepet[k]; }
-            katalogRender();
-        });
-    }).catch(function () {});
-}
-function katalogSay() { var n = 0; for (var k in _katalogSepet) n += _katalogSepet[k]; return n; }
-// Adet: yazılabilir kutu + / − . YAZARKEN tüm grid'i YENİDEN ÇİZME (imleç kaçar) — yerinde güncelle.
-function katBtnTazele() {
-    var secN = katalogSay();
-    var b = document.querySelector('#view-katalog .kat-siparis-bar button');
-    if (b) { b.disabled = !secN; b.textContent = '🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : ''); }
-}
-function katSet(id, n) {
-    n = parseInt(n, 10); if (isNaN(n) || n < 0) n = 0;
-    if (n <= 0) delete _katalogSepet[id]; else _katalogSepet[id] = n;
-    var c = document.getElementById('kc-' + id);
-    if (c) c.classList.toggle('secili', !!_katalogSepet[id]);
-    katBtnTazele();
-}
-function katYaz(id, val) { katSet(id, val); }                 // kutuya elle yazınca
-function katAdim(id, d) {                                      // + / − tuşu
-    var cur = (_katalogSepet[id] || 0) + d; if (cur < 0) cur = 0;
-    katSet(id, cur);
-    var inp = document.getElementById('ki-' + id); if (inp) inp.value = cur > 0 ? cur : '';
-}
-function katalogRender() {
-    var el = document.getElementById('katalogList');
-    if (!el) return;
-    if (!_katalog.length) {
-        el.innerHTML = '<div class="empty"><div class="ico">📦</div><p>' +
-            (_katalogYuklendi ? 'Katalogda ürün yok.<br>Tedarikçi ürün ekleyince burada görünür.' : 'Katalog yükleniyor…') + '</p></div>';
-        return;
-    }
-    var secN = katalogSay();
-    var h = '<div class="kat-siparis-bar"><button onclick="katalogSiparisVer()"' + (secN ? '' : ' disabled') + '>🛒 Sipariş Ver' + (secN ? ' (' + secN + ' adet)' : '') + '</button></div><div class="kat-grid">';
-    for (var i = 0; i < _katalog.length; i++) {
-        var u = _katalog[i], a = _katalogSepet[u._id] || 0;
-        var sp = katFiyat(u);
-        h += '<div class="kat-card' + (a ? ' secili' : '') + '" id="kc-' + u._id + '">' +
-            '<button class="kat-sil" onclick="katalogUrunSil(\'' + u._id + '\')">🗑️</button>' +
-            '<img src="' + (u.img || '') + '">' +
-            '<div class="kat-bilgi">' +
-            '<div class="kat-ust"><span class="kat-fiyat">¥' + (u.fiyat || 0) + '</span><span class="kat-gram">' + (u.gram || 0) + ' g' + (u.gb === 12 ? ' · dz' : '') + '</span></div>' +
-            (u.aciklama ? '<div class="kat-not">' + escapeHtml(u.aciklama) + '</div>' : '') +
-            '<div class="kat-satis"><span class="kat-satis-lbl">Satış ₺</span><input class="kat-satis-in" type="number" inputmode="decimal" min="0" value="' + sp + '" onclick="this.select()" oninput="katFiyatYaz(\'' + u._id + '\',this.value)"></div>' +
-            '<div class="kat-adet"><button onclick="katAdim(\'' + u._id + '\',-1)">−</button><input id="ki-' + u._id + '" class="kat-say" type="number" inputmode="numeric" min="0" value="' + (a || '') + '" placeholder="0" onclick="this.select()" oninput="katYaz(\'' + u._id + '\',this.value)"><button class="art" onclick="katAdim(\'' + u._id + '\',1)">+</button></div>' +
-            '</div></div>';
-    }
-    el.innerHTML = h + '</div>';
-}
-function katalogSiparisVer() {
-    var secN = katalogSay();
-    if (!secN) return;
-    var secili = _katalog.filter(function (u) { return _katalogSepet[u._id]; });
-    if (!secili.length) return;
-    var sure = parseInt(prompt('Bu sipariş tahmini kaç günde gelir? (tedarik süresi)', '25'), 10);
-    if (!sure || sure < 1) sure = 25;
-    var bugun = new Date().toLocaleDateString('tr-TR');
-    // Fiş ürünleri — DİKKAT: fiş ürününe uid VERME (kanonik json bozulur, tüm siparişler yeniden yüklenir)
-    var urunlerY = secili.map(function (u) {
-        return { gram: u.gram || 0, fiyat: u.fiyat || 0, adet: _katalogSepet[u._id], gb: u.gb || 1, img: u.img || null, satis: katFiyat(u) };
-    });
-    var yeniId = Date.now();
-    fisler.push({
-        id: yeniId, ad: 'Katalog Siparişi ' + bugun, tarih: bugun, sure: sure, durum: 0,
-        kurlar: getKurlar(), urunler: urunlerY, toplam: fisYuan(urunlerY), kartFoto: null
-    });
-    fislerKaydet();   // IndexedDB + bulut (override)
-    // Tedarikçiye bildir + katalogdan düş + rev ilerlet
-    try {
-        var sipOzet = {
-            tarih: bugun, ts: firebase.database.ServerValue.TIMESTAMP, toplam: fisYuan(urunlerY),
-            urunler: secili.map(function (u) { return { img: u.img || null, fiyat: u.fiyat || 0, gram: u.gram || 0, gb: u.gb || 1, adet: _katalogSepet[u._id], satis: katFiyat(u) }; })
-        };
-        katRef('siparisler').push(sipOzet);
-        var updates = {};
-        secili.forEach(function (u) { updates['urunler/' + u._id] = null; });
-        updates['rev'] = firebase.database.ServerValue.TIMESTAMP;
-        katRef().update(updates);
-    } catch (e) {}
-    // Yerelde de düş
-    _katalog = _katalog.filter(function (u) { return !_katalogSepet[u._id]; });
-    _katalogSepet = {}; _katalogFiyat = {}; _katalogRev = null; _katalogYuklendi = false;
-    tabRozetGuncelle();
-    alert('✅ Sipariş verildi: ' + secili.length + ' çeşit · ' + secN + ' adet.\nSiparişlerine "Verildi" olarak eklendi.');
-    tabGoster('siparisler');
-    fisAc(yeniId);
-}
 function tabRozetGuncelle() {
     document.getElementById('tabFisEt').innerHTML = 'Fiş' + (urunler.length ? '<span class="tab-rozet">' + urunler.length + '</span>' : '');
     document.getElementById('tabSiparisEt').innerHTML = 'Siparişler' + (fisler.length ? '<span class="tab-rozet">' + fisler.length + '</span>' : '');
@@ -2650,7 +2505,7 @@ function baglantiTesti() {
     var u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
     u = u || _user;
     var L = [];
-    L.push('Sürüm 50');
+    L.push('Sürüm 51');
     L.push('Giriş: ' + (u ? u.email : '❌ YOK'));
     L.push('uid: ' + (u ? u.uid.slice(0, 10) : '-'));
     L.push('firebase yüklü: ' + (typeof firebase !== 'undefined' ? 'evet' : '❌ HAYIR'));
